@@ -1,0 +1,17 @@
+Metadata-Version: 1.1
+Name: setuptools-setup-versions
+Version: 0.0.5
+Summary: Automatically update setup.py `install_requires` version #'s for PIP packages and increment setup.py version
+Home-page: https://bitbucket.org/davebelais/setuptools-setup-versions
+Author: David Belais
+Author-email: david@belais.me
+License: UNKNOWN
+Description: UNKNOWN
+Keywords: setuptools version install_requires
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
