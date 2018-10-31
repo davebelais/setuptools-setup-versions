@@ -59,54 +59,13 @@ def update_versions(package_directory_or_setup_script=None):
                         operator = '>='  # We assume the operator will be >= in the absence of an existing operator
                         version = '0'  # Ensures we use the package version found in the installed resource
 
-                    version = None
-
                     # Determine the package version currently installed for this resource
                     try:
                         version = pkg_resources.get_distribution(referenced_package).version
                     except pkg_resources.DistributionNotFound:
-                        # If this package is not installed, it could be part of a project where references are handled
-                        # by an IDE, so we look in sibling directories for a matching package.
-                        version = None
+                        pass
 
-                        for directory in os.listdir('../'):
-                            try:
-                                dependency_setup_path = find.setup_script_path('../' + directory)
-                            except FileNotFoundError:
-                                continue
-
-                            with open(dependency_setup_path) as dependency_setup_file:
-                                dependency_setup_script = dependency_setup_file.read()
-                                for dependency_setup_call in parse.setup_calls(
-                                    dependency_setup_script,
-                                    name_space=dict(
-                                        __file__=os.path.abspath(setup_script_path)
-                                    )
-                                ):
-                                    if 'version' in dependency_setup_call:
-                                        version = dependency_setup_call['version']
-                                        break
-
-                            if version is not None:
-                                break
-
-                        requirement_setup_path = '../%s/setup.py' % referenced_package
-                        try:
-                            with open(requirement_setup_path) as requirement_setup_file:
-                                requirement_setup_contents = requirement_setup_file.read()
-                                for version_str in re.findall(
-                                    r'\bversion\s*=\s*[\'"][^\'"]+[\'"]',
-                                    requirement_setup_contents
-                                ):
-                                    name_space = {}
-                                    exec(version_str, name_space)
-                                    version = name_space['version']
-                                    break
-                        except FileNotFoundError:
-                            pass
-
-                    if version is not None:
-                        install_requires.append(referenced_package + operator + str(version))
+                    install_requires.append(referenced_package + operator + str(version))
 
                 setup_call['install_requires'] = install_requires
 
