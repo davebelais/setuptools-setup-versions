@@ -172,26 +172,34 @@ def setup_calls(setup_script, name_space=None):
 
         for i in range(2, len(script_parts), 2):
 
+            keyword_arguments = None  # type: Optional[Dict[str, Any]]
+
             args_kwargs_etc = script_parts[i]
 
             potential_args_kwargs_parts = args_kwargs_etc.split(')')
 
             args_kwargs_parts = []
+            error = None
 
             for args_kwargs_part in potential_args_kwargs_parts:
 
                 args_kwargs_parts.append(args_kwargs_part)
+                error = None
 
                 try:
                     try:
+
                         exec(
                             (
                                 'keyword_arguments = dict(%s)' % ')'.join(args_kwargs_parts)
                             ),
                             name_space
                         )
+                        keyword_arguments = name_space['keyword_arguments']
                         break
+
                     except:
+
                         exec(
                             (
                                 script_parts[0] + '\n\n' +
@@ -199,19 +207,25 @@ def setup_calls(setup_script, name_space=None):
                             ),
                             name_space
                         )
+                        keyword_arguments = name_space['keyword_arguments']
                         break
-                except SyntaxError:
-                    pass
-                except NameError as e:
+
+                except (SyntaxError, NameError) as e:
+
                     e.args = tuple(
-                        ['This package can only parse simple `setuptools.setup()` calls--functions and ']
+                        ['You package is not compatible with %s.\n' ] +
+                        (list(e.args) if e.args else [])
                     )
+                    error = e
 
-            keyword_arguments = name_space['keyword_arguments']
+            if keyword_arguments is not None:
 
-            source = script_parts[i-1] + ')'.join(args_kwargs_parts + [''])
+                source = script_parts[i-1] + ')'.join(args_kwargs_parts + [''])
 
-            yield SetupCall(
-                source,
-                keyword_arguments
-            )
+                yield SetupCall(
+                    source,
+                    keyword_arguments
+                )
+
+        if error is not None:
+            raise error

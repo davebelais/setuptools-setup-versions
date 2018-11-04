@@ -6,7 +6,8 @@ setup(
     version="0.0.10",
 
     description=(
-        "Automatically update setup.py `install_requires` version #'s for PIP packages and increment setup.py version"
+        "Automatically update setup.py `install_requires` version numbers for PIP packages and procedurally increment" +
+        "`setuptools.setup()` version number."
     ),
 
     url='https://bitbucket.org/davebelais/setuptools-setup-versions',
