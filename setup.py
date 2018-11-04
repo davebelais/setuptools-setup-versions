@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name='setuptools-setup-versions',
 
-    version="0.0.9",
+    version="0.0.10",
 
     description=(
         "Automatically update setup.py `install_requires` version #'s for PIP packages and increment setup.py version"
