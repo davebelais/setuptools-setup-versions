@@ -1,3 +1,4 @@
+import numbers
 import os
 import re
 from numbers import Number
@@ -18,46 +19,35 @@ def get(package_directory_or_setup_script=None):
     """
     setup_script_path = find.setup_script_path(package_directory_or_setup_script)
 
-    with open(setup_script_path) as setup_file:
+    for setup_call in parse.SetupScript(setup_script_path).setup_calls:
 
-        setup_file_contents = setup_file.read()
-
-        for setup_call in parse.setup_calls(
-            setup_file_contents,
-            name_space=dict(
-                __file__=os.path.abspath(setup_script_path)
-            )
-        ):
-
-            try:
-                version = setup_call['version']
-                break
-            except KeyError:
-                pass
+        try:
+            version = setup_call['version']
+            break
+        except KeyError:
+            pass
 
     return version
 
 
-def increment(package_directory_or_setup_script=None):
-    # type: (Optional[str]) -> bool
+def increment(package_directory_or_setup_script=None, amount=None):
+    # type: (Optional[str],Optional[Union[str, int, Sequence[int]]]) -> bool
     """
     Increment the version # of the referenced package by the least significant amount possible
     """
 
+    if isinstance(amount, int):
+        amount = (amount,)
+    elif isinstance(amount, str):
+        amount = tuple(int(i) for i in amount.split('.'))
+    elif isinstance(amount, numbers.Number):
+        amount = tuple(int(i) for i in str(amount).split('.'))
+
     setup_script_path = find.setup_script_path(package_directory_or_setup_script)
 
-    with open(setup_script_path) as setup_file:
+    with parse.SetupScript(setup_script_path) as setup_script:
 
-        new_setup_file_contents = setup_file_contents = setup_file.read()
-
-        for setup_call in parse.setup_calls(
-            setup_file_contents,
-            name_space=dict(
-                __file__=os.path.abspath(setup_script_path)
-            )
-        ):
-
-            original_source = str(setup_call)
+        for setup_call in setup_script.setup_calls:
 
             try:
                 version = setup_call['version']
@@ -73,7 +63,15 @@ def increment(package_directory_or_setup_script=None):
                     dot_version = dot_version_etc[0]
                     etc = ''.join(dot_version_etc[1:])
                     version_list = list(dot_version.split('.'))
-                    version_list[-1] = str(int(version_list[-1]) + 1)
+                    if amount:
+                        version_list_length = len(version_list)
+                        for index in range(len(amount)):
+                            if index < version_list_length:
+                                version_list[index] += amount[index]
+                            else:
+                                version_list[index].append(amount[index])
+                    else:
+                        version_list[-1] = str(int(version_list[-1]) + 1)
                     new_version = '.'.join(version_list) + etc
 
                     setup_call['version'] = new_version
@@ -91,16 +89,6 @@ def increment(package_directory_or_setup_script=None):
                 else:
                     setup_call['version'] += 1
 
-            new_source = str(setup_call)
+        modified = setup_script.save()
 
-            if new_source != original_source:
-                new_setup_file_contents = new_setup_file_contents.replace(original_source, new_source)
-
-    updated = False  # type: bool
-
-    if new_setup_file_contents != setup_file_contents:
-        with open(setup_script_path, 'w') as setup_file:
-            setup_file.write(new_setup_file_contents)
-        updated = True
-
-    return updated
+    return modified
