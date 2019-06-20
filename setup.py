@@ -1,7 +1,3 @@
-"""
-xyz
-"""
-
 from setuptools import setup
 import sys
 
@@ -13,32 +9,24 @@ if sys.version_info < (3, 4):
 setup(
     name='setuptools-setup-versions',
 
-    version="0.0.18",
+    version="0.0.21",
 
     description=(
-        "Automatically update setup.py `install_requires` version numbers for PIP packages"
+        "Automatically update setup.py `install_requires` version numbers"
+        "for PIP packages"
     ),
 
     author='David Belais',
     author_email='david@belais.me',
 
     classifiers=[
-        'Development Status :: 3 - Alpha',
-        # 'Development Status :: 4 - Beta',
-        # 'Development Status :: 5 - Production/Stable',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
-        # 'Programming Language :: Python :: 2.7',
-        # 'Programming Language :: Python :: 3',
-        # 'Programming Language :: Python :: 3.2',
-        # 'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7'
     ],
 
-    keywords='setuptools version install_requires',
+    keywords='setuptools install_requires version',
 
     packages=['setuptools_setup_versions'],
 

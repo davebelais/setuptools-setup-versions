@@ -1,6 +1,11 @@
 # !python3.7
-# @author: David Belais <david@belais.me>
-# This script cleans up some temporary files created by setuptools, tox, and pytest
+
+"""
+@author: David Belais <david@belais.me>
+
+This script cleans up some temporary files created by `setuptools`, `tox`, and
+`pytest`.
+"""
 
 import shutil
 import os
@@ -19,7 +24,10 @@ for file_or_directory in (
 ):
     if os.path.exists(file_or_directory):
 
-        command = 'git rm -r -f --cached --ignore-unmatch "%s"' % file_or_directory
+        command = (
+            'git rm -r -f --cached --ignore-unmatch "%s"' %
+            file_or_directory
+        )
 
         print(command)
 

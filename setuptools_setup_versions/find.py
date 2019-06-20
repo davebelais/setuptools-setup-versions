@@ -10,6 +10,18 @@ except ImportError:
     Optional = Tuple = Dict = Any = None
 
 
+def egg_info(directory):
+    # type: (str) -> Optional[str]
+    egg_info_directory_path = None
+    for sub_directory in os.listdir(directory):
+        if sub_directory[-9:] == '.egg-info':
+            path = os.path.join(directory, sub_directory)
+            if os.path.isdir(path):
+                egg_info_directory_path = path
+                break
+    return egg_info_directory_path
+
+
 def setup_script_path(package_directory_or_setup_script=None):
     # type: (Optional[str]) -> str
     """
@@ -23,11 +35,16 @@ def setup_script_path(package_directory_or_setup_script=None):
         setup_script_path = package_directory_or_setup_script
     else:
         if os.path.isdir(package_directory_or_setup_script):
-            # If we've been passed the package directory, get the setup file path
-            setup_script_path = os.path.join(package_directory_or_setup_script, 'setup.py')
+            # If we've been passed the package directory, get the setup file
+            # path
+            setup_script_path = os.path.join(
+                package_directory_or_setup_script,
+                'setup.py'
+            )
         else:
             raise FileNotFoundError(
-                '"%s" is not a package directory or setup script.' % package_directory_or_setup_script
+                '"%s" is not a package directory or setup script.' %
+                package_directory_or_setup_script
             )
 
     if not os.path.isfile(setup_script_path):

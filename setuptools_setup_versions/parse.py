@@ -1,7 +1,13 @@
 import json
+import os
 import re
+import shutil
+import sys
+from subprocess import getstatusoutput
 
+import pkg_resources
 from more_itertools.recipes import grouper
+from . import find
 
 try:
     from typing import Optional, Tuple, Dict, Any
@@ -29,10 +35,11 @@ def _get_parenthesis_imbalance_index(text, imbalance=0):
     """
     Return an integer where:
 
-        - If the parenthesis are not balanced--the integer is the imbalance index at the end of the text (a negative
-          number).
+        - If the parenthesis are not balanced--the integer is the imbalance
+          index at the end of the text (a negative number).
 
-        - If the parenthesis are balanced--the integer is the index at which they become so (a positive integer).
+        - If the parenthesis are balanced--the integer is the index at which
+          they become so (a positive integer).
     """
 
     index = 0
@@ -88,11 +95,17 @@ class SetupScript(object):
         in_setup_call = False
         self._setup_call_locations = []
 
-        for code, string_literal in grouper(re.split(STRING_LITERAL_RE, self.source), 2, None):
+        for code, string_literal in grouper(
+            re.split(STRING_LITERAL_RE, self.source
+        ), 2, None):
 
             if code:
 
-                for preceding_code, setup_call in grouper(re.split(r'(\bsetup[\s]*\()', code), 2, None):
+                for preceding_code, setup_call in grouper(
+                    re.split(r'((?:setuptools\.)?\bsetup[\s]*\()', code),
+                    2,
+                    None
+                ):
 
                     script_parts.append(preceding_code)
 
@@ -102,26 +115,38 @@ class SetupScript(object):
                         # We don't care about parenthesis in comments
                         relevant_preceding_code = preceding_code
                         if '#' in relevant_preceding_code:
-                            relevant_preceding_code = relevant_preceding_code.split('#')[0]
+                            relevant_preceding_code = (
+                                relevant_preceding_code.split('#')[0]
+                            )
 
-                        # Determine if/where the parenthetical ends, or the imbalance resulting
-                        parenthesis_imbalance = _get_parenthesis_imbalance_index(
-                            relevant_preceding_code,
-                            parenthesis_imbalance
+                        # Determine if/where the parenthetical ends, or the
+                        # imbalance resulting
+                        parenthesis_imbalance = (
+                            _get_parenthesis_imbalance_index(
+                                relevant_preceding_code,
+                                parenthesis_imbalance
+                            )
                         )
 
-                        # If `imbalance` is positive--it's the index where the imbalance ends
+                        # If `imbalance` is positive--it's the index where the
+                        # imbalance ends
                         if parenthesis_imbalance > 0:
-                            self._setup_call_locations[-1][-1] = character_index + parenthesis_imbalance
+                            self._setup_call_locations[-1][-1] = (
+                                character_index + parenthesis_imbalance
+                            )
                             parenthesis_imbalance = 0
                             in_setup_call = False
 
                     # Parse the setup call
                     if setup_call:
-                        self._setup_call_locations.append([character_index + len(preceding_code), None])
+                        self._setup_call_locations.append(
+                            [character_index + len(preceding_code), None]
+                        )
                         parenthesis_imbalance = -1
                         in_setup_call = True
-                        script_parts.append('SETUP_KWARGS[%s] = dict(' % str(setup_call_index))
+                        script_parts.append(
+                            'SETUP_KWARGS[%s] = dict(' % str(setup_call_index)
+                        )
                         setup_call_index += 1
 
                 character_index += len(code)
@@ -141,14 +166,16 @@ class SetupScript(object):
     def _get_setup_kwargs(self):
         # type: (...) -> Sequence[dict]
         """
-        Return an array of dictionaries where each represents the keyword arguments to a `setup` call
+        Return an array of dictionaries where each represents the keyword
+        arguments to a `setup` call
         """
         name_space = {}
 
         try:
             exec(self._get_setup_kwargs_code, name_space)
         except:
-            # Only raise an error if the script could not finish populating all of the setup keyword arguments
+            # Only raise an error if the script could not finish populating all
+            # of the setup keyword arguments
             if not (
                 'SETUP_KWARGS' in name_space and
                 name_space['SETUP_KWARGS'] and
@@ -321,13 +348,21 @@ class SetupCall(object):
                 for i in range(2, len(source_parts), 2):
 
                     source_value_representation_parts = []
-                    potential_source_value_representation_parts = source_parts[i].split(',')
+                    potential_source_value_representation_parts = (
+                        source_parts[i].split(',')
+                    )
 
-                    for source_value_representation_part in potential_source_value_representation_parts:
-                        source_value_representation_parts.append(source_value_representation_part)
+                    for source_value_representation_part in (
+                        potential_source_value_representation_parts
+                    ):
+                        source_value_representation_parts.append(
+                            source_value_representation_part
+                        )
                         try:
                             exec(
-                                'value = ' + ','.join(source_value_representation_parts),
+                                'value = ' + ','.join(
+                                    source_value_representation_parts
+                                ),
                                 self.name_space
                             )
                             break
@@ -335,7 +370,8 @@ class SetupCall(object):
                             pass
 
                     existing_key_value_source = (
-                        ''.join(source_parts[-2]) + ','.join(source_value_representation_parts)
+                        ''.join(source_parts[-2]) +
+                        ','.join(source_value_representation_parts)
                     ).rstrip()
 
                     break
@@ -347,7 +383,10 @@ class SetupCall(object):
                 key_value_source_lines = key_value_source.split('\n')
                 if len(key_value_source_lines) > 1:
                     for i in range(1, len(key_value_source_lines)):
-                        key_value_source_lines[i] = self._parameter_indentation + key_value_source_lines[i]
+                        key_value_source_lines[i] = (
+                            self._parameter_indentation +
+                            key_value_source_lines[i]
+                        )
                 key_value_source = '\n'.join(key_value_source_lines)
 
             if existing_key_value_source is None:
@@ -360,11 +399,18 @@ class SetupCall(object):
                         lines[-1]
                     )
                 else:
-                    self.source = self.source.rstrip(',) ') + ', ' + key_value_source + ')'
+                    self.source = (
+                        self.source.rstrip(',) ') +
+                        ', ' + key_value_source +
+                        ')'
+                    )
 
             else:
 
-                self.source = self.source.replace(existing_key_value_source, key_value_source)
+                self.source = self.source.replace(
+                    existing_key_value_source,
+                    key_value_source
+                )
 
             self._keyword_arguments[key] = value
 
@@ -378,3 +424,150 @@ class SetupCall(object):
     def __contains__(self, item):
         # type: (str) -> bool
         return item in self._keyword_arguments
+
+
+
+
+def get_package_name_and_version_from_setup(path=None):
+    # type: (Optional[str]) -> Union[str, float, int]
+    """
+    Get the version # of a package
+    """
+    version = None  # type: str
+    name = None  # type: str
+
+    for setup_call in parse.SetupScript(path).setup_calls:
+
+        try:
+            version = setup_call['version']
+        except KeyError:
+            pass
+
+        try:
+            name = setup_call['name']
+        except KeyError:
+            pass
+
+        # We have a version and package name, so we are done
+        if (version is not None) and (name is not None):
+            break
+
+    return name, version
+
+
+def get_package_name_and_version_from_setup(path):
+    # type: (str) -> str
+
+    package_name = None  # type: Optional[str]
+    version = None  # type: Optional[str]
+
+    # Get the current working directory
+    current_directory = os.path.abspath(os.curdir)
+
+    # Change directory to the setup script's directory
+    os.chdir(os.path.dirname(path))
+
+    directory = os.path.dirname(path)
+
+    egg_info_directory = find.egg_info(directory)
+
+    if egg_info_directory:
+
+        package_name, version = get_package_name_and_version_from_egg_info(
+            egg_info_directory
+        )
+
+    else:
+
+        # Execute the setup script
+        command = '%s %s egg_info' % (sys.executable, path)
+        status, output = getstatusoutput(command)
+
+        if status:
+            raise OSError(output)
+
+        egg_info_directory = find.egg_info(directory)
+
+        if egg_info_directory:
+            package_name, version = get_package_name_and_version_from_egg_info(
+                egg_info_directory
+            )
+            shutil.rmtree(egg_info_directory)
+
+    # Restore the previous working directory
+    os.chdir(current_directory)
+
+    return package_name, version
+
+
+def get_package_name_and_version_from_egg_info(directory):
+    # type: (str) -> Tuple[Optional[str], Optional[str]]
+    """
+    Parse the egg's PKG-INFO and return the package name and version
+    """
+
+    name = None  # type: Optional[str]
+    version = None  # type: Optional[str]
+    pkg_info_path = os.path.join(directory, 'PKG-INFO')
+
+    with open(pkg_info_path, 'r') as pkg_info_file:
+        for line in pkg_info_file.read().split('\n'):
+            if ':' in line:
+                property_name, value = line.split(':')[:2]
+                property_name = property_name.strip().lower()
+                if property_name == 'version':
+                    version = value.strip()
+                    if name is not None:
+                        break
+                elif property_name == 'name':
+                    name = value.strip()
+                    if version is not None:
+                        break
+
+    return name, version
+
+
+def get_package_version(package_name):
+    # type: (str) -> str
+    normalized_package_name = package_name.replace('_', '-')
+
+    try:
+
+        version = pkg_resources.get_distribution(
+            normalized_package_name
+        ).version
+
+    except pkg_resources.DistributionNotFound:
+
+        # The package has no distribution information available--obtain it from
+        # `setup.py`
+        for entry in pkg_resources.working_set.entries:
+
+            name = None
+
+            try:
+                egg_info_path = find.egg_info(entry)
+            except (FileNotFoundError, NotADirectoryError):
+                egg_info_path = None
+
+            if egg_info_path:
+                name, version_ = get_package_name_and_version_from_egg_info(
+                    egg_info_path
+                )
+            else:
+                try:
+                    setup_script_path = find.setup_script_path(entry)
+                    name, version_ = get_package_name_and_version_from_setup(
+                        setup_script_path
+                    )
+                except FileNotFoundError:
+                    # This indicates a package with no setup script *or*
+                    # egg-info was found, so it's not a package
+                    pass
+
+            # If the package name is a match, we will return the version found
+            if name and name.replace('_', '-') == normalized_package_name:
+                version = version_
+                break
+
+    return version
