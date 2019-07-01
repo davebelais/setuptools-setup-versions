@@ -32,7 +32,11 @@ STRING_LITERAL_RE = (
 )
 
 
-def _get_parenthesis_imbalance_index(text, imbalance=0):
+def _get_imbalance_index(
+    text,
+    imbalance=0,
+    boundary_characters='()'
+):
     # type: (str, int) -> str
     """
     Return an integer where:
@@ -47,9 +51,9 @@ def _get_parenthesis_imbalance_index(text, imbalance=0):
     length = len(text)
     while index < length and imbalance != 0:
         character = text[index]
-        if character == '(':
+        if character == boundary_characters[0]:
             imbalance -= 1
-        elif character == ')':
+        elif character == boundary_characters[-1]:
             imbalance += 1
         index += 1
     return index if imbalance == 0 else imbalance
@@ -127,7 +131,7 @@ class SetupScript(object):
                         # Determine if/where the parenthetical ends, or the
                         # imbalance resulting
                         parenthesis_imbalance = (
-                            _get_parenthesis_imbalance_index(
+                            _get_imbalance_index(
                                 relevant_preceding_code,
                                 parenthesis_imbalance
                             )
@@ -275,100 +279,56 @@ class SetupCall(OrderedDict):
     ):
         # type: (SetupScript, str, dict) -> None
         self.setup_script = setup_script
+        self._value_locations = []
+        self._kwargs = deepcopy(keyword_arguments)
         self._original_source = source  # type: str
-        self._modified = False
+        self._modified = set()
         self._indent_length = 4
         self._indent_character = ' '
         self._indent = self._indent_character * self._indent_length
+        self._keywords_value_locations = OrderedDict()
         for key, value in keyword_arguments.items():
             super().__setitem__(key, value)
+        self._get_value_locations()
 
-    @property
-    def _get_setup_kwargs_code(self):
-        # type: (...) -> str
-        """
-        This returns a modified version of the setup script which passes
-        the keywords for each call to `setuptools.setup` to a dictionary, and
-        appends that dictionary to a list: `SETUP_KWARGS`
-        """
-        script_parts = []
-        setup_call_index = 0
-        character_index = 0
-        parenthesis_imbalance = 0
-        in_setup_call = False
-        # This is a list of tuples indicating the start and end indices
-        # of a `setup` call within the script
-        self._setup_call_locations = []  # Sequence[Tuple[int, int]]
-        # Split the source of the setup script into chunks which represent
-        # code vs string literals
-        for (
-            code,  # type: str
-            string_literal  # type: str
-        ) in grouper(
-            re.split(STRING_LITERAL_RE, self._original_source),
-            2,
-            None
-        ):
-            # Parse the code portion
-            if code:
-                # Look for a call to `setuptools.setup` in the code portion
-                for preceding_code, setup_call in grouper(
-                    re.split(r'((?:setuptools\.)?\bsetup[\s]*\()', code),
-                    2,
-                    None
-                ):
-                    script_parts.append(preceding_code)
-                    # Determine where the setup call ends, if we are inside it
-                    if in_setup_call:
-                        # We don't care about parenthesis in comments
-                        relevant_preceding_code = preceding_code
-                        if '#' in relevant_preceding_code:
-                            relevant_preceding_code = (
-                                relevant_preceding_code.split('#')[0]
-                            )
-                        # Determine if/where the parenthetical ends, or the
-                        # imbalance resulting
-                        parenthesis_imbalance = (
-                            _get_parenthesis_imbalance_index(
-                                relevant_preceding_code,
-                                parenthesis_imbalance
-                            )
-                        )
-                        # If `imbalance` is positive--it's the index where the
-                        # imbalance ends
-                        if parenthesis_imbalance > 0:
-                            self._setup_call_locations[-1][-1] = (
-                                character_index + parenthesis_imbalance
-                            )
-                            parenthesis_imbalance = 0
-                            in_setup_call = False
-                    # Parse the setup call, and modify the script to pass
-                    # the keyword arguments to a dictionary
-                    if setup_call:
-                        self._setup_call_locations.append(
-                            [character_index + len(preceding_code), None]
-                        )
-                        parenthesis_imbalance = -1
-                        in_setup_call = True
-                        script_parts.append(
-                            'SETUP_KWARGS[%s] = dict(' % str(setup_call_index)
-                        )
-                        setup_call_index += 1
-                character_index += len(code)
-            if string_literal:
-                script_parts.append(string_literal)
-                character_index += len(string_literal)
-        script_parts.insert(
-            0,
-            'SETUP_KWARGS = [%s]\n' % ', '.join(['None'] * setup_call_index)
-        )
-        return ''.join(script_parts)
+    def _get_value_location(
+        self,
+        key,
+        next_key=None
+    ):
+        # type: (str, Optional[str]) -> Tuple[int, int]
+        before, value = re.match(
+            (
+                r'(^.*?\b%s\s*=\s*)(.*?)(' % key +
+                (
+                    r'\b%s\s*=.*?' % next_key
+                    if next_key else
+                    r''
+                ) +
+                r'[\s\r\n]*\)$'
+            ),
+            self._original_source,
+            flags=re.DOTALL
+        ).groups()[:2]
+        return len(before), len(value.rstrip(' ,\r\n')
+
+    def _get_value_locations(self):
+        # type: (...) -> None
+        keys = tuple(self.keys())
+        length = len(keys)
+        for index in range(length - 1):
+            key = keys[index]
+            self._value_locations.append((
+                key,
+                self._get_value_location(
+                    key, keys[index + 1]
+                )
+            ))
+        key = keys[-1]
+        self._value_locations.append(key, self._get_value_location(key))
 
     def __str__(self):
-        if self._modified:
-            return repr(self)
-        else:
-            return self._original_source
+        return repr(self)
 
     def _repr_value(self, value):
         # type: (str, Any) -> str
@@ -384,21 +344,38 @@ class SetupCall(OrderedDict):
         Return a representation of the `setup` call which can be used in this
         setup script
         """
-        setup_procedure_name = self._original_source.split('(')[0].strip()
-        lines = [
-            setup_procedure_name + '('
+        parts = [
+            self._original_source[:self._value_locations[0][1][0]]
         ]
-        # Represent the keyword arguments
-        for key, value in self.items():
-            lines.append(
-                '    %s=%s,' % (key, self._repr_value(value))
-            )
-        # Strip the trailing comma from the last key -> value pair
-        lines[-1] = lines[-1][:-1]
-        # ...finish the setup call
-        lines.append(')')
-        # Join the lines and return
-        return '\n'.join(lines)
+        for key, location in self._value_locations:
+            if self[key] == self._kwargs[key]:
+                parts.append(self._original_source[location[0]:location[1]])
+            else:
+                parts.append(
+                    '%s=%s' % (
+                        key,
+                        self._repr_value(self[key])
+                    )
+                )
+        parts.append(
+            self._original_source[self._value_locations[-1][1][1]:]
+        )
+        return ''.join(parts)
+        # setup_procedure_name = self._original_source.split('(')[0].strip()
+        # lines = [
+        #     setup_procedure_name + '('
+        # ]
+        # # Represent the keyword arguments
+        # for key, value in self.items():
+        #     lines.append(
+        #
+        #     )
+        # # Strip the trailing comma from the last key -> value pair
+        # lines[-1] = lines[-1][:-1]
+        # # ...finish the setup call
+        # lines.append(')')
+        # # Join the lines and return
+        # return '\n'.join(lines)
 
     def __setitem__(self, key, value):
         # type: (str, Any) -> None
@@ -407,7 +384,7 @@ class SetupCall(OrderedDict):
         having been modified
         """
         if (key not in self) or self[key] != value:
-            self._modified = True
+            self._modified.add(key)
             super().__setitem__(key, value)
 
 
