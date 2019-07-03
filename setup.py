@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 import sys
 
 if sys.version_info < (3, 4):
@@ -9,7 +9,7 @@ if sys.version_info < (3, 4):
 setup(
     name='setuptools-setup-versions',
 
-    version="0.0.21",
+    version="0.0.22",
 
     description=(
         "Automatically update setup.py `install_requires` version numbers"
@@ -28,7 +28,7 @@ setup(
 
     keywords='setuptools install_requires version',
 
-    packages=['setuptools_setup_versions'],
+    packages=find_packages(),
 
     install_requires=[
         "setuptools>=39.0.1",

@@ -279,7 +279,7 @@ class SetupCall(OrderedDict):
     ):
         # type: (SetupScript, str, dict) -> None
         self.setup_script = setup_script
-        self._value_locations = []
+        self._value_locations = None
         self._kwargs = deepcopy(keyword_arguments)
         self._original_source = source  # type: str
         self._modified = set()
@@ -289,7 +289,6 @@ class SetupCall(OrderedDict):
         self._keywords_value_locations = OrderedDict()
         for key, value in keyword_arguments.items():
             super().__setitem__(key, value)
-        self._get_value_locations()
 
     def _get_value_location(
         self,
@@ -297,35 +296,43 @@ class SetupCall(OrderedDict):
         next_key=None
     ):
         # type: (str, Optional[str]) -> Tuple[int, int]
-        before, value = re.match(
+        pattern = (
+            r'(^.*?\b%s\s*=\s*)(.*?)(' % key +
             (
-                r'(^.*?\b%s\s*=\s*)(.*?)(' % key +
-                (
-                    r'\b%s\s*=.*?' % next_key
-                    if next_key else
-                    r''
-                ) +
-                r'[\s\r\n]*\)$'
-            ),
+                r'\b%s\s*=.*?' % next_key
+                if next_key else
+                r''
+            ) +
+            r'[\s\r\n]*\)$)'
+        )
+        before, value = re.match(
+            pattern,
             self._original_source,
             flags=re.DOTALL
         ).groups()[:2]
-        return len(before), len(value.rstrip(' ,\r\n')
+        start = len(before)
+        end = start + len(value.rstrip(' ,\r\n'))
+        return start, end
 
-    def _get_value_locations(self):
+    @property
+    def value_locations(self):
         # type: (...) -> None
-        keys = tuple(self.keys())
-        length = len(keys)
-        for index in range(length - 1):
-            key = keys[index]
-            self._value_locations.append((
-                key,
-                self._get_value_location(
-                    key, keys[index + 1]
-                )
-            ))
-        key = keys[-1]
-        self._value_locations.append(key, self._get_value_location(key))
+        if self._value_locations is None:
+            value_locations = []
+            keys = tuple(self.keys())
+            length = len(keys)
+            for index in range(length - 1):
+                key = keys[index]
+                value_locations.append((
+                    key,
+                    self._get_value_location(
+                        key, keys[index + 1]
+                    )
+                ))
+            key = keys[-1]
+            value_locations.append((key, self._get_value_location(key)))
+            self._value_locations = value_locations
+        return self._value_locations
 
     def __str__(self):
         return repr(self)
@@ -344,38 +351,19 @@ class SetupCall(OrderedDict):
         Return a representation of the `setup` call which can be used in this
         setup script
         """
-        parts = [
-            self._original_source[:self._value_locations[0][1][0]]
-        ]
-        for key, location in self._value_locations:
+        parts = []
+        index = 0
+        for key, location in self.value_locations:
+            parts.append(self._original_source[index:location[0]])
             if self[key] == self._kwargs[key]:
                 parts.append(self._original_source[location[0]:location[1]])
             else:
-                parts.append(
-                    '%s=%s' % (
-                        key,
-                        self._repr_value(self[key])
-                    )
-                )
+                parts.append(self._repr_value(self[key]))
+            index = location[1]
         parts.append(
-            self._original_source[self._value_locations[-1][1][1]:]
+            self._original_source[index:]
         )
         return ''.join(parts)
-        # setup_procedure_name = self._original_source.split('(')[0].strip()
-        # lines = [
-        #     setup_procedure_name + '('
-        # ]
-        # # Represent the keyword arguments
-        # for key, value in self.items():
-        #     lines.append(
-        #
-        #     )
-        # # Strip the trailing comma from the last key -> value pair
-        # lines[-1] = lines[-1][:-1]
-        # # ...finish the setup call
-        # lines.append(')')
-        # # Join the lines and return
-        # return '\n'.join(lines)
 
     def __setitem__(self, key, value):
         # type: (str, Any) -> None
