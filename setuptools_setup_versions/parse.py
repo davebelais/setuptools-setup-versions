@@ -354,7 +354,10 @@ class SetupCall(OrderedDict):
         parts = []
         index = 0
         for key, location in self.value_locations:
-            parts.append(self._original_source[index:location[0]])
+            before = self._original_source[index:location[0]]
+            if index and before[0] != ',':
+                before = ',' + before
+            parts.append(before)
             if self[key] == self._kwargs[key]:
                 parts.append(self._original_source[location[0]:location[1]])
             else:
