@@ -9,7 +9,7 @@ if sys.version_info < (3, 4):
 setup(
     name='setuptools-setup-versions',
 
-    version="0.0.23",
+    version="0.0.24",
 
     description=(
         "Automatically update setup.py `install_requires` version numbers"
