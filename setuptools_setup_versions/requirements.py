@@ -1,6 +1,8 @@
 import re
 from typing import Optional, List
 from warnings import warn
+import sys
+from traceback import format_exception
 
 import pkg_resources
 
@@ -47,10 +49,13 @@ def update_version(requirement, operator=None):
 def update_versions(requirements, operator=None):
     # type: (List[str], Optional[str]) -> None
     for index in range(len(requirements)):
-        requirements[index] = update_version(
-            requirements[index],
-            operator=operator
-        )
+        try:
+            requirements[index] = update_version(
+                requirements[index],
+                operator=operator
+            )
+        except:
+            warn(''.join(format_exception(*sys.exc_info())))
 
 
 def update_setup(
