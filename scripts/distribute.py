@@ -9,7 +9,7 @@ from setuptools_setup_versions import install_requires
 os.chdir(urljoin(__file__, '../'))
 
 # Update `setup.py` to require currently installed versions of all packages
-install_requires.update_versions('>=')
+install_requires.update_versions(operator='>=')
 
 # Build
 status, output = getstatusoutput(
