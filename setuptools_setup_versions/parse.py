@@ -476,24 +476,23 @@ def _get_package_names_versions():
             name = None  # type: Optional[str]
             version = None  # type: Optional[str]
             try:
-                egg_info_path = find.egg_info(entry)
-            except (FileNotFoundError, NotADirectoryError):
-                egg_info_path = None
-            if egg_info_path:
-                name, version = get_package_name_and_version_from_egg_info(
-                    egg_info_path
+                setup_script_path = find.setup_script_path(entry)
+                name, version = get_package_name_and_version_from_setup(
+                    setup_script_path
                 )
-            else:
+            except FileNotFoundError:
+                # This indicates a package with no setup script *or*
+                # egg-info was found, so it's not a package
                 try:
-                    setup_script_path = find.setup_script_path(entry)
-                    name, version = get_package_name_and_version_from_setup(
-                        setup_script_path
+                    egg_info_path = find.egg_info(entry)
+                except (FileNotFoundError, NotADirectoryError):
+                    egg_info_path = None
+                if egg_info_path:
+                    name, version = get_package_name_and_version_from_egg_info(
+                        egg_info_path
                     )
-                except FileNotFoundError:
-                    # This indicates a package with no setup script *or*
-                    # egg-info was found, so it's not a package
-                    pass
-            _package_names_versions[name] = version
+            if name is not None:
+                _package_names_versions[name] = version
     return _package_names_versions
 
 
@@ -501,16 +500,16 @@ def get_package_version(package_name):
     # type: (str) -> str
     normalized_package_name = package_name.replace('_', '-')
     version = None  # type: Optional[str]
-    try:
-        version = pkg_resources.get_distribution(
-            normalized_package_name
-        ).version
-    except pkg_resources.DistributionNotFound:
-        # The package has no distribution information available--obtain it from
-        # `setup.py`
-        for name, version_ in _get_package_names_versions().items():
-            # If the package name is a match, we will return the version found
-            if name and name.replace('_', '-') == normalized_package_name:
-                version = version_
-                break
+    # try:
+    #     version = pkg_resources.get_distribution(
+    #         normalized_package_name
+    #     ).version
+    # except pkg_resources.DistributionNotFound:
+    #     # The package has no distribution information available--obtain it from
+    #     # `setup.py`
+    for name, version_ in _get_package_names_versions().items():
+        # If the package name is a match, we will return the version found
+        if name and name.replace('_', '-') == normalized_package_name:
+            version = version_
+            break
     return version
