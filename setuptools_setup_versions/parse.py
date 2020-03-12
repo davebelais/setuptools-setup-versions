@@ -172,7 +172,9 @@ class SetupScript(object):
         Return an array of dictionaries where each represents the keyword
         arguments to a `setup` call
         """
-        name_space = {}
+        name_space = {
+            '__file__': self.path
+        }
         try:
             exec(self._get_setup_kwargs_code, name_space)
         except:  # noqa
@@ -236,7 +238,7 @@ class SetupScript(object):
             index += 1
         character_index = self._setup_call_locations[-1][1] + 1
         parts.append(self._original_source[character_index:])
-        return ''.join(parts)
+        return ''.join(parts) + '\n'
 
     def save(self, path=None):
         # type: (Optional[str]) -> bool

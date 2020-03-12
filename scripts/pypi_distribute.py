@@ -38,7 +38,11 @@ if __name__ == '__main__':
         )
     finally:
         exec(
-            open('./clean.py').read(),
-            {'__file__': os.path.abspath('./clean.py')}
+            open(REPOSITORY_DIRECTORY + '/scripts/clean.py').read(),
+            {
+                '__file__': os.path.abspath(
+                    REPOSITORY_DIRECTORY + '/scripts/clean.py'
+                )
+            }
         )
 

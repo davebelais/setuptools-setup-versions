@@ -1,5 +1,6 @@
 # !/usr/bin/python3
 import os
+import shutil
 from tempfile import gettempdir
 from subprocess import getstatusoutput
 from setuptools_setup_versions import install_requires
@@ -9,7 +10,9 @@ REPOSITORY_DIRECTORY = os.path.dirname(
         __file__
     )
 )
-PACKAGE_NAME = REPOSITORY_DIRECTORY.split('/')[-1].split('\\')[-1]
+PACKAGE_NAME = REPOSITORY_DIRECTORY.split(
+    '/'
+)[-1].split('\\')[-1].replace('_', '-')
 
 
 def run(command: str) -> str:
@@ -27,6 +30,9 @@ if __name__ == '__main__':
         # Create recipe
         directory: str = gettempdir() + '/conda-skeleton'
         os.makedirs(directory, exist_ok=True)
+        package_directory = '%s/%s' % (directory, PACKAGE_NAME)
+        if os.path.exists(package_directory):
+            shutil.rmtree(package_directory)
         os.chdir(directory)
         run(
             'conda skeleton pypi ' + PACKAGE_NAME
@@ -40,7 +46,10 @@ if __name__ == '__main__':
         )
     finally:
         exec(
-            open('./clean.py').read(),
-            {'__file__': os.path.abspath('./clean.py')}
+            open(REPOSITORY_DIRECTORY + '/scripts/clean.py').read(),
+            {
+                '__file__':
+                os.path.abspath(REPOSITORY_DIRECTORY + '/scripts/clean.py')
+            }
         )
 

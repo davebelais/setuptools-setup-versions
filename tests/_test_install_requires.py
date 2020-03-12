@@ -101,7 +101,8 @@ def create_setup_scripts():
             SetupScriptComponents.MULTIPLE_SETUP_CALLS,
             SetupScriptComponents.PRE_SETUP_CODE,
             SetupScriptComponents.IMPORT_SETUPTOOLS_MODULE
-        }
+        },
+        ['pytest']
     )
 
 

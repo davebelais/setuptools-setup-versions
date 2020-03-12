@@ -42,8 +42,10 @@ def update_version(requirement, operator=None):
         )
     if package_operator:
         return referenced_package + package_operator + version
-    else:
+    elif referenced_package:
         return referenced_package
+    else:
+        return requirement
 
 
 def update_versions(requirements, operator=None):
