@@ -19,7 +19,7 @@ package = __file__.split('/')[-3]
 
 for file_or_directory in (
     'dist', 'build', '%s.egg-info' % package,
-    '.tox', '.cache', 'venv',
+    '.tox', '.cache',
     '.pytest_cache'
 ):
     if os.path.exists(file_or_directory):
