@@ -1,7 +1,6 @@
 # !/usr/bin/python3
 import os
 from subprocess import getstatusoutput
-from tempfile import gettempdir
 
 from setuptools_setup_versions import install_requires
 
