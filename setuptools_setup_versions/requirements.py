@@ -15,7 +15,7 @@ def update_version(requirement, operator=None):
     Get a requirement string updated to reflect the current package version
     """
     # Parse the requirement string
-    parts = re.split(r'([<>=]+)', requirement)
+    parts = re.split(r'([~<>=]+)', requirement)
     if len(parts) == 3:  # The requirement includes a version
         referenced_package, package_operator, version = parts
         if operator:
@@ -78,7 +78,7 @@ def update_setup(
 
         operator (str):
 
-            An operator such as '>=' or '==' which will be applied to all
+            An operator such as '~=', '>=' or '==' which will be applied to all
             package requirements. If not provided, existing operators will
             be used and only package version numbers will be updated.
 
