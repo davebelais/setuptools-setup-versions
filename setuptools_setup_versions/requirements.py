@@ -1,4 +1,5 @@
 import re
+from copy import copy
 from typing import Optional, List
 from warnings import warn
 import sys
@@ -9,25 +10,54 @@ import pkg_resources
 from setuptools_setup_versions import parse, find
 
 
-def _get_aligned_version(
-    version: str,
-    reference_version: Optional[str],
+def _align_version_specificity(
+    installed_version: str,
+    required_version: Optional[str],
+    default_specificity: int = 2
+) -> str:
+    version: str
+    installed_version_parts: List[str] = installed_version.split('.')
+    if required_version and required_version != '0':
+        reference_version_parts: List[str] = required_version.split('.')
+        version_parts_length: int = len(installed_version_parts)
+        reference_version_parts_length: int = len(reference_version_parts)
+        version_parts: List[str] = installed_version_parts[
+            :(
+                reference_version_parts_length
+                if (
+                    version_parts_length > reference_version_parts_length
+                ) else
+                None
+            )
+        ]
+        if reference_version_parts[-1].strip() == '*':
+            version_parts[-1] = '*'
+        version = '.'.join(version_parts)
+    else:
+        version = '.'.join(installed_version_parts[:default_specificity])
+    return version
+
+
+def _get_updated_version_identifier(
+    installed_version: str,
+    required_version: Optional[str],
     operator: str
 ) -> str:
-    if operator == '~=':
-        version_parts: List[str] = version.split('.')
-        if reference_version != '0':
-            reference_version_parts: List[str] = reference_version.split('.')
-            version_parts_length: int = len(version_parts)
-            reference_version_parts_length: int = len(reference_version_parts)
-            if version_parts_length > reference_version_parts_length:
-                version = '.'.join(
-                    version_parts[:reference_version_parts_length]
-                )
-        else:
-            version = '.'.join(version_parts[:2])
-    elif '<' in operator:
-        version = reference_version
+    version: str = installed_version
+    if operator == '~=' or (
+        required_version and
+        operator == '==' and
+        required_version.rstrip().endswith('*')
+    ):
+        version = _align_version_specificity(
+            installed_version,
+            required_version,
+            2
+        )
+    elif ('<' in operator) or ('!' in operator):
+        # Versions associated with inequalities and less-than operators
+        # should not be updated
+        version = required_version
     return version
 
 
@@ -61,7 +91,7 @@ def update_version(
     # Determine the package version currently installed for
     # this resource
     try:
-        version = _get_aligned_version(
+        version = _get_updated_version_identifier(
             parse.get_package_version(
                 package_name
             ),

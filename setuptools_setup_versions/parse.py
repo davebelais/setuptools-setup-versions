@@ -511,9 +511,12 @@ def get_package_version(package_name):
     except pkg_resources.DistributionNotFound:
         # The package has no distribution information available--obtain it from
         # `setup.py`
+        found: bool = False
         for name, version_ in _get_package_names_versions().items():
             # If the package name is a match, we will return the version found
             if name and name.replace('_', '-') == normalized_package_name:
                 version = version_
                 break
+        if not found:
+            raise
     return version
