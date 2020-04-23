@@ -9,43 +9,95 @@ import pkg_resources
 from setuptools_setup_versions import parse, find
 
 
-def update_version(requirement, operator=None):
-    # type: (str, Optional[str]) -> str
+def _get_aligned_version(
+    version: str,
+    reference_version: Optional[str],
+    operator: str
+) -> str:
+    if operator == '~=':
+        version_parts: List[str] = version.split('.')
+        if reference_version != '0':
+            reference_version_parts: List[str] = reference_version.split('.')
+            version_parts_length: int = len(version_parts)
+            reference_version_parts_length: int = len(reference_version_parts)
+            if version_parts_length > reference_version_parts_length:
+                version = '.'.join(
+                    version_parts[:reference_version_parts_length]
+                )
+        else:
+            version = '.'.join(version_parts[:2])
+    elif '<' in operator:
+        version = reference_version
+    return version
+
+
+def update_version(
+    requirement,
+    operator=None,
+    package_name=None
+):
+    # type: (str, Optional[str], Optional[str]) -> str
     """
     Get a requirement string updated to reflect the current package version
     """
+    leftovers: List[str] = []
+    if ',' in requirement:
+        leftovers = requirement.split(',')
+        requirement = leftovers.pop(0)
+    package_identifier: str
     # Parse the requirement string
     parts = re.split(r'([~<>=]+)', requirement)
     if len(parts) == 3:  # The requirement includes a version
-        referenced_package, package_operator, version = parts
-        if operator:
-            package_operator = operator
+        package_identifier, package_operator, version = parts
     else:  # The requirement does not yet include a version
-        referenced_package = parts[0]
-        if '@' in referenced_package:
+        package_identifier = parts[0]
+        if '@' in package_identifier:
             package_operator = version = None
         else:
             package_operator = operator
             version = '0' if operator else None
-    referenced_package_name = referenced_package.split('@')[0]
+    if package_identifier:
+        package_name = package_identifier.split('@')[0]
     # Determine the package version currently installed for
     # this resource
     try:
-        version = parse.get_package_version(
-            referenced_package_name
+        version = _get_aligned_version(
+            parse.get_package_version(
+                package_name
+            ),
+            version,
+            package_operator
         )
     except pkg_resources.DistributionNotFound:
         warn(
             'The `%s` packages were not present in the '
             'source environment, and therefore a version '
-            'could not be inferred' % referenced_package
+            'could not be inferred' % package_identifier
         )
+    new_requirement: List[str] = []
+    package_identifier: str = (
+        package_name
+        if package_identifier else
+        ''
+    )
     if package_operator:
-        return referenced_package + package_operator + version
-    elif referenced_package:
-        return referenced_package
+        new_requirement.append(
+            package_identifier + package_operator + version
+        )
+    elif package_identifier:
+        new_requirement.append(package_identifier)
     else:
-        return requirement
+        new_requirement.append(requirement)
+    leftover: str
+    for leftover in leftovers:
+        new_requirement.append(
+            update_version(
+                leftover.strip(),
+                operator=None,
+                package_name=package_name
+            )
+        )
+    return ','.join(new_requirement)
 
 
 def update_versions(requirements, operator=None):
