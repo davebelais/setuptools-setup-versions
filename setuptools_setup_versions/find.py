@@ -1,7 +1,4 @@
 import os
-import re
-
-from . import install_requires
 
 
 try:

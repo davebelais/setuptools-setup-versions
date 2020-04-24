@@ -2,16 +2,18 @@ from setuptools import setup, find_packages
 
 setup(
     name='setuptools-setup-versions',
-    version="0.1.5",
+    version="1.0.0",
     description=(
-        "Automatically update setup.py `install_requires` version numbers"
-        "for PIP packages"
+        "Automatically update setup.py `install_requires`, `extras_require`,"
+        "and/or `setup_requires` version numbers for PIP packages"
     ),
     author='David Belais',
     author_email='david@belais.me',
     python_requires='~=3.6',
     keywords='setuptools install_requires version',
-    packages=find_packages(),
+    packages=[
+        'setuptools_setup_versions'
+    ],
     install_requires=[
         "setuptools~=46.1",
         "pip~=20.0",

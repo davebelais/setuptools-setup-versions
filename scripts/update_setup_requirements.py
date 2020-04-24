@@ -11,4 +11,4 @@ if __name__ == '__main__':
         os.path.abspath(__file__))
     ))
     # Update `setup.py` to require currently installed versions of all packages
-    requirements.update_setup(operator='~=')
+    requirements.update_setup(default_operator='~=')

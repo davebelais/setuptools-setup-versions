@@ -1,3 +1,4 @@
+import functools
 import json
 import os
 import re
@@ -500,6 +501,7 @@ def _get_package_names_versions():
     return _package_names_versions
 
 
+@functools.lru_cache()
 def get_package_version(package_name):
     # type: (str) -> str
     normalized_package_name = package_name.replace('_', '-')

@@ -1,5 +1,4 @@
 import re
-from copy import copy
 from typing import Optional, List
 from warnings import warn
 import sys
@@ -61,33 +60,23 @@ def _get_updated_version_identifier(
     return version
 
 
-def update_version(
-    requirement,
-    operator=None,
-    package_name=None
-):
-    # type: (str, Optional[str], Optional[str]) -> str
+def _get_updated_version_specifier(
+    package_name: str,
+    version_specifier: str,
+    operator: Optional[str] = None
+) -> str:
     """
     Get a requirement string updated to reflect the current package version
     """
-    leftovers: List[str] = []
-    if ',' in requirement:
-        leftovers = requirement.split(',')
-        requirement = leftovers.pop(0)
-    package_identifier: str
     # Parse the requirement string
-    parts = re.split(r'([~<>=]+)', requirement)
-    if len(parts) == 3:  # The requirement includes a version
-        package_identifier, package_operator, version = parts
-    else:  # The requirement does not yet include a version
-        package_identifier = parts[0]
-        if '@' in package_identifier:
-            package_operator = version = None
-        else:
-            package_operator = operator
-            version = '0' if operator else None
-    if package_identifier:
-        package_name = package_identifier.split('@')[0]
+    requirement_operator: str
+    version: str
+    requirement_operator, version = re.match(
+        r'^\s*([~<>=]*)\s*(.*?)\s*$',
+        version_specifier
+    ).groups()
+    if not requirement_operator:
+        requirement_operator = operator
     # Determine the package version currently installed for
     # this resource
     try:
@@ -96,90 +85,112 @@ def update_version(
                 package_name
             ),
             version,
-            package_operator
+            requirement_operator
         )
     except pkg_resources.DistributionNotFound:
         warn(
-            'The `%s` packages were not present in the '
-            'source environment, and therefore a version '
-            'could not be inferred' % package_identifier
+            f'The `{package_name}` package was not present in the '
+            'source environment, and therefore a version could not be inferred'
         )
-    new_requirement: List[str] = []
-    package_identifier: str = (
-        package_name
-        if package_identifier else
-        ''
+    return requirement_operator + version
+
+
+def get_updated_version_requirement(
+    requirement: str,
+    default_operator: Optional[str] = None
+) -> str:
+    """
+    Return the provided package requirement updated to reflect the currently
+    installed version of the package.
+
+    - version_requirement ([str]): A PEP-440 compliant package requirement.
+    - default_operator (str) = None: If specified, package requirements
+      which did not already have a version specifier will be assigned the
+      current package version with this operator. If not specified—package
+      requirements without a version specifier will remain as-is.
+    """
+    version_specifiers: List[str] = requirement.split(',')
+    package_identifier: str
+    version_specifier: str
+    package_identifier, version_specifier = re.match(
+        r'^\s*([^\s~<>=]*)?\s*([~<>=].*?)\s*$',
+        version_specifiers.pop(0)
+    ).groups()
+    if version_specifier:
+        version_specifiers.insert(0, version_specifier)
+    return package_identifier + ','.join(
+        _get_updated_version_specifier(
+            package_identifier.split('@')[0],
+            version_specifier,
+            default_operator
+        )
+        for version_specifier in version_specifiers
     )
-    if package_operator:
-        new_requirement.append(
-            package_identifier + package_operator + version
-        )
-    elif package_identifier:
-        new_requirement.append(package_identifier)
-    else:
-        new_requirement.append(requirement)
-    leftover: str
-    for leftover in leftovers:
-        new_requirement.append(
-            update_version(
-                leftover.strip(),
-                operator=None,
-                package_name=package_name
-            )
-        )
-    return ','.join(new_requirement)
 
 
-def update_versions(requirements, operator=None):
-    # type: (List[str], Optional[str]) -> None
-    for index in range(len(requirements)):
+def update_requirements_versions(
+    requirements: List[str],
+    default_operator: Optional[str] = None
+) -> None:
+    """
+    Update (in-place) the version specifiers for a list of requirements.
+
+    - requirements ([str]): A list of PEP-440 compliant package requirement.
+    - default_operator (str) = None: If specified, package requirements
+      which do not have a version specifier will be assigned the current
+      package version with this operator.
+    """
+    index: int
+    version_requirement: str
+    for index, version_requirement in enumerate(requirements):
         try:
-            requirements[index] = update_version(
-                requirements[index],
-                operator=operator
+            requirements[index] = get_updated_version_requirement(
+                version_requirement,
+                default_operator=default_operator
             )
-        except:
+        except:  # noqa
             warn(''.join(format_exception(*sys.exc_info())))
 
 
 def update_setup(
-    package_directory_or_setup_script=None,
-    operator=None
-):
-    # type: (Optional[str], Optional[str]) -> bool
+    package_directory_or_setup_script: Optional[str] = None,
+    default_operator: Optional[str] = None
+) -> bool:
     """
     Update setup.py installation requirements to (at minimum) require the
     version of each referenced package which is currently installed.
 
     Parameters:
 
-        package_directory_or_setup_script (str):
+    - package_directory_or_setup_script (str): The directory containing the
+      package. This directory must include a file named "setup.py".
+    - operator (str): An operator such as '~=', '>=' or '==' which will be
+      applied to all package requirements. If not provided, existing operators
+      will  be used and only package version numbers will be updated.
 
-            The directory containing the package. This directory must include a
-            file named "setup.py".
-
-        operator (str):
-
-            An operator such as '~=', '>=' or '==' which will be applied to all
-            package requirements. If not provided, existing operators will
-            be used and only package version numbers will be updated.
-
-    Returns:
-
-         `True` if changes were made to setup.py, otherwise `False`
+    Returns: `True` if changes were made to setup.py, otherwise `False`
     """
-    setup_script_path = find.setup_script_path(
+    setup_script_path: str = find.setup_script_path(
         package_directory_or_setup_script
     )
     # Read the current `setup.py` configuration
+    setup_script: parse.SetupScript
     with parse.SetupScript(setup_script_path) as setup_script:
         for setup_call in setup_script.setup_calls:
+            if 'setup_requires' in setup_call:
+                update_requirements_versions(
+                    setup_call['setup_requires'],
+                    default_operator=default_operator
+                )
             if 'install_requires' in setup_call:
-                update_versions(
-                    setup_call['install_requires'], operator=operator
+                update_requirements_versions(
+                    setup_call['install_requires'],
+                    default_operator=default_operator
                 )
             if 'extras_require' in setup_call:
                 for requirements in setup_call['extras_require'].values():
-                    update_versions(requirements, operator=operator)
+                    update_requirements_versions(
+                        requirements, default_operator=default_operator
+                    )
         modified = setup_script.save()
     return modified

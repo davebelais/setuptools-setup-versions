@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from urllib.parse import urljoin
 
 try:
@@ -6,14 +7,8 @@ try:
 except ImportError:
     Tuple = Iterable = Sequence = Set = None
 
-# For compatibility with python versions prior to 3.4
-try:
-    from enum import Enum
-except ImportError:
-    class Enum(object):
-        pass
 
-from setuptools_setup_versions import install_requires, find
+from setuptools_setup_versions import requirements
 
 
 class SetupScriptComponents(Enum):
@@ -119,7 +114,7 @@ def test_update_versions():
     for temp_setup_script_path, setup_script_after in create_setup_scripts():
 
         # Apply version updates
-        install_requires.update_versions(temp_setup_script_path)
+        requirements.update_setup(temp_setup_script_path)
 
         # Verify the outcome matches our expected result
         with open(temp_setup_script_path, 'r') as temp_setup_script_io:
