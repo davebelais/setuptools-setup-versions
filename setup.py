@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='setuptools-setup-versions',
-    version="1.0.1",
+    version="1.0.3",
     description=(
         "Automatically update setup.py `install_requires`, `extras_require`,"
         "and/or `setup_requires` version numbers for PIP packages"
@@ -28,7 +28,7 @@ setup(
             "tox~=3.14",
             "pytest~=5.4",
             "wheel~=0.34",
-            "readme-md-docstrings>=0.0.10,<1"
+            "readme-md-docstrings>=0.1.0,<1"
         ]
     }
 )

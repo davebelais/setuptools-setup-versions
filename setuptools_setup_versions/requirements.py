@@ -16,7 +16,7 @@ def _align_version_specificity(
 ) -> str:
     version: str
     installed_version_parts: List[str] = installed_version.split('.')
-    if required_version and required_version != '0':
+    if required_version:
         reference_version_parts: List[str] = required_version.split('.')
         version_parts_length: int = len(installed_version_parts)
         reference_version_parts_length: int = len(reference_version_parts)
@@ -63,7 +63,7 @@ def _get_updated_version_identifier(
 def _get_updated_version_specifier(
     package_name: str,
     version_specifier: str,
-    operator: Optional[str] = None
+    default_operator: Optional[str] = None
 ) -> str:
     """
     Get a requirement string updated to reflect the current package version
@@ -76,7 +76,7 @@ def _get_updated_version_specifier(
         version_specifier
     ).groups()
     if not requirement_operator:
-        requirement_operator = operator
+        requirement_operator = default_operator
     # Determine the package version currently installed for
     # this resource
     try:
@@ -113,11 +113,11 @@ def get_updated_version_requirement(
     package_identifier: str
     version_specifier: str
     package_identifier, version_specifier = re.match(
-        r'^\s*([^\s~<>=]*)?\s*([~<>=].*?)\s*$',
+        r'^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$',
         version_specifiers.pop(0)
     ).groups()
-    if version_specifier:
-        version_specifiers.insert(0, version_specifier)
+    if version_specifier or default_operator:
+        version_specifiers.insert(0, version_specifier or '')
     return package_identifier + ','.join(
         _get_updated_version_specifier(
             package_identifier.split('@')[0],
