@@ -1,5 +1,5 @@
 import re
-from typing import Optional, List
+from typing import Container, Optional, List, Pattern
 from warnings import warn
 import sys
 from traceback import format_exception
@@ -8,11 +8,15 @@ import pkg_resources
 
 from setuptools_setup_versions import parse, find
 
+_PACKAGE_VERSION_PATTERN: Pattern = re.compile(
+    r'^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$'
+)
+
 
 def _align_version_specificity(
     installed_version: str,
     required_version: Optional[str],
-    default_specificity: int = 2
+    default_specificity: Optional[int] = None
 ) -> str:
     version: str
     installed_version_parts: List[str] = installed_version.split('.')
@@ -43,20 +47,20 @@ def _get_updated_version_identifier(
     operator: str
 ) -> str:
     version: str = installed_version
-    if operator == '~=' or (
-        required_version and
-        operator == '==' and
-        required_version.rstrip().endswith('*')
-    ):
-        version = _align_version_specificity(
-            installed_version,
-            required_version,
-            2
-        )
-    elif ('<' in operator) or ('!' in operator):
+    if ('<' in operator) or ('!' in operator):
         # Versions associated with inequalities and less-than operators
         # should not be updated
         version = required_version
+    else:
+        version = _align_version_specificity(
+            installed_version,
+            required_version,
+            default_specificity=(
+                2
+                if operator == '~=' else
+                None
+            )
+        )
     return version
 
 
@@ -112,8 +116,7 @@ def get_updated_version_requirement(
     version_specifiers: List[str] = requirement.split(',')
     package_identifier: str
     version_specifier: str
-    package_identifier, version_specifier = re.match(
-        r'^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$',
+    package_identifier, version_specifier = _PACKAGE_VERSION_PATTERN.match(
         version_specifiers.pop(0)
     ).groups()
     if version_specifier or default_operator:
@@ -130,7 +133,8 @@ def get_updated_version_requirement(
 
 def update_requirements_versions(
     requirements: List[str],
-    default_operator: Optional[str] = None
+    default_operator: Optional[str] = None,
+    ignore: Container[str] = ()
 ) -> None:
     """
     Update (in-place) the version specifiers for a list of requirements.
@@ -143,18 +147,30 @@ def update_requirements_versions(
     index: int
     version_requirement: str
     for index, version_requirement in enumerate(requirements):
-        try:
-            requirements[index] = get_updated_version_requirement(
-                version_requirement,
-                default_operator=default_operator
-            )
-        except:  # noqa
-            warn(''.join(format_exception(*sys.exc_info())))
+        package_identifier: str = (
+            _PACKAGE_VERSION_PATTERN.match(
+                version_requirement.split(
+                    ','
+                )[0]
+            ).groups()[0].strip().split('@')[0]
+        )
+        if (
+            (package_identifier not in ignore) and
+            (package_identifier.split('[')[0] not in ignore)
+        ):
+            try:
+                requirements[index] = get_updated_version_requirement(
+                    version_requirement,
+                    default_operator=default_operator
+                )
+            except:  # noqa
+                warn(''.join(format_exception(*sys.exc_info())))
 
 
 def update_setup(
     package_directory_or_setup_script: Optional[str] = None,
-    default_operator: Optional[str] = None
+    default_operator: Optional[str] = None,
+    ignore: Container[str] = ()
 ) -> bool:
     """
     Update setup.py installation requirements to (at minimum) require the
@@ -180,17 +196,21 @@ def update_setup(
             if 'setup_requires' in setup_call:
                 update_requirements_versions(
                     setup_call['setup_requires'],
-                    default_operator=default_operator
+                    default_operator=default_operator,
+                    ignore=ignore
                 )
             if 'install_requires' in setup_call:
                 update_requirements_versions(
                     setup_call['install_requires'],
-                    default_operator=default_operator
+                    default_operator=default_operator,
+                    ignore=ignore
                 )
             if 'extras_require' in setup_call:
                 for requirements in setup_call['extras_require'].values():
                     update_requirements_versions(
-                        requirements, default_operator=default_operator
+                        requirements,
+                        default_operator=default_operator,
+                        ignore=ignore
                     )
         modified = setup_script.save()
     return modified

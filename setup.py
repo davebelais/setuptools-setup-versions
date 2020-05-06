@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='setuptools-setup-versions',
-    version="1.0.3",
+    version="1.1.0",
     description=(
         "Automatically update setup.py `install_requires`, `extras_require`,"
         "and/or `setup_requires` version numbers for PIP packages"
