@@ -99,6 +99,23 @@ def _get_updated_version_specifier(
     return requirement_operator + version
 
 
+def _split_requirement(requirement: str) -> List[str]:
+    """
+    >>> _split_requirement('package_name[option-a,option-b]>=1.1,<2.0.1')
+    ['package_name[option-a,option-b]>=1.1', '<2.0.1']
+    """
+    if ']' in requirement:
+        # Package options were specified
+        parts: List[str] = requirement.split(']')
+        package_specifier: str = f"{']'.join(parts[:-1])}]"
+        version_specifiers: List[str] = parts[-1].split(',')
+        return [
+            f'{package_specifier}{version_specifiers[0]}'
+        ] + version_specifiers[1:]
+    else:
+        return requirement.split(',')
+
+
 def get_updated_version_requirement(
     requirement: str,
     default_operator: Optional[str] = None
@@ -113,7 +130,7 @@ def get_updated_version_requirement(
       current package version with this operator. If not specified—package
       requirements without a version specifier will remain as-is.
     """
-    version_specifiers: List[str] = requirement.split(',')
+    version_specifiers: List[str] = _split_requirement(requirement)
     package_identifier: str
     version_specifier: str
     package_identifier, version_specifier = _PACKAGE_VERSION_PATTERN.match(
@@ -149,9 +166,7 @@ def update_requirements_versions(
     for index, version_requirement in enumerate(requirements):
         package_identifier: str = (
             _PACKAGE_VERSION_PATTERN.match(
-                version_requirement.split(
-                    ','
-                )[0]
+                _split_requirement(version_requirement)[0]
             ).groups()[0].strip().split('@')[0]
         )
         if (
