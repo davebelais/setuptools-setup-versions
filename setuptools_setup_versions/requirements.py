@@ -235,7 +235,8 @@ def _get_updated_version_specifier(
     except pkg_resources.DistributionNotFound:
         warn(
             f'The `{package_name}` package was not present in the '
-            'source environment, and therefore a version could not be inferred'
+            'source environment, and therefore a version could not be '
+            f'inferred:\n{"".join(format_exception(*sys.exc_info()))}'
         )
     return requirement_operator + version
 

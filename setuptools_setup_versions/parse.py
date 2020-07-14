@@ -155,7 +155,7 @@ class SetupScript(object):
                         parenthesis_imbalance = -1
                         in_setup_call = True
                         script_parts.append(
-                            'SETUP_KWARGS[%s] = dict(' % str(setup_call_index)
+                            f'SETUP_KWARGS[{setup_call_index}] = dict('
                         )
                         setup_call_index += 1
                 character_index += len(code)
@@ -168,7 +168,7 @@ class SetupScript(object):
         )
         return ''.join(script_parts)
 
-    def _get_setup_kwargs(self) -> Sequence[Dict[str, Any]]:
+    def get_setup_kwargs(self) -> Sequence[Dict[str, Any]]:
         """
         Return an array of dictionaries where each represents the keyword
         arguments to a `setup` call
@@ -194,7 +194,7 @@ class SetupScript(object):
         Parse all of the calls to `setuptools.setup`
         """
         parts = []
-        setup_kwargs = self._get_setup_kwargs()
+        setup_kwargs = self.get_setup_kwargs()
         length = len(setup_kwargs)
         character_index = 0
         for index in range(length):
@@ -456,7 +456,9 @@ def _get_package_names_versions() -> Dict[str, Any]:
 
 @functools.lru_cache()
 def get_package_version(package_name: str) -> str:
-    normalized_package_name: str = package_name.replace('_', '-')
+    normalized_package_name: str = (
+        pkg_resources.Requirement.parse(package_name).name
+    )
     version: Optional[str] = None
     try:
         version = pkg_resources.get_distribution(
@@ -467,7 +469,9 @@ def get_package_version(package_name: str) -> str:
         # `setup.py`
         for name, version_ in _get_package_names_versions().items():
             # If the package name is a match, we will return the version found
-            if name and name.replace('_', '-') == normalized_package_name:
+            if name and pkg_resources.Requirement.parse(
+                name
+            ).name == normalized_package_name:
                 version = version_
                 break
         if version is None:
