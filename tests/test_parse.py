@@ -3,8 +3,7 @@ from urllib.parse import urljoin
 from setuptools_setup_versions import parse, find
 
 
-def test_parse():
-    # type: (...) -> None
+def test_parse() -> None:
     with parse.SetupScript(
         find.setup_script_path(urljoin(__file__, '../'))
     ) as setup_script:

@@ -1,10 +1,13 @@
 import re
-from typing import Container, Optional, List, Pattern
+from typing import (
+    Container, Iterable, Iterator, Optional, List, Pattern, Tuple, Union
+)
 from warnings import warn
 import sys
 from traceback import format_exception
 
 import pkg_resources
+from more_itertools import grouper, last
 
 from setuptools_setup_versions import parse, find
 
@@ -13,32 +16,173 @@ _PACKAGE_VERSION_PATTERN: Pattern = re.compile(
 )
 
 
-def _align_version_specificity(
-    installed_version: str,
-    required_version: Optional[str],
-    default_specificity: Optional[int] = None
-) -> str:
-    version: str
-    installed_version_parts: List[str] = installed_version.split('.')
-    if required_version:
-        reference_version_parts: List[str] = required_version.split('.')
-        version_parts_length: int = len(installed_version_parts)
-        reference_version_parts_length: int = len(reference_version_parts)
-        version_parts: List[str] = installed_version_parts[
-            :(
-                reference_version_parts_length
-                if (
-                    version_parts_length > reference_version_parts_length
-                ) else
-                None
-            )
-        ]
-        if reference_version_parts[-1].strip() == '*':
-            version_parts[-1] = '*'
-        version = '.'.join(version_parts)
-    else:
-        version = '.'.join(installed_version_parts[:default_specificity])
-    return version
+def _parse_version_number_string(
+    version_number_string: str
+) -> Union[str, int]:
+    return (
+        version_number_string
+        if version_number_string == '*' else
+        int(version_number_string)
+    )
+
+
+class Version:
+
+    def __init__(
+        self,
+        version_string: str = ''
+    ) -> None:
+        # Validate parameters
+        assert isinstance(version_string, str)
+        # Initialize member data
+        self.minor: Optional[Version] = None
+        self.prefix: str = ''
+        self.number: Union[int, str] = '*'
+        if version_string:
+            self._parse_version_string(version_string)
+
+    def _parse_version_string(
+        self,
+        version_string: str
+    ) -> None:
+        prefix: str
+        number_string: str
+        version_string_parts: Iterator[str] = iter(re.split(
+            r'([^\d*]+)', version_string
+        ))
+        self.number = _parse_version_number_string(next(version_string_parts))
+        version: Version = self
+        for prefix, number_string in grouper(version_string_parts, 2):
+            version.minor = Version()
+            version = version.minor
+            version.prefix = prefix
+            version.number = _parse_version_number_string(number_string)
+
+    def __iter__(self) -> Iterable['Version']:
+        return self._traverse()
+
+    def _traverse(self) -> Iterable['Version']:
+        yield self
+        if self.minor is not None:
+            version: Version
+            for version in self.minor._traverse():
+                yield version
+
+    def truncate(self, specificity: int = 0, wildcard: bool = False) -> None:
+        """
+        Truncate the version identifier after the indicated `depth`
+        (where 0 is the current depth), and apply a wildcard as the last
+        version number if indicated.
+
+        Parameters:
+
+        - depth (int) = 0
+        - wildcard (bool) = False: If `True`, make the most specific version
+          identifier a wildcard.
+        """
+        assert specificity >= 0
+        index: int
+        version: Version
+        parent_version: Optional[Version] = None
+        for index, version in enumerate(self._traverse()):
+            if index == specificity:
+                if wildcard:
+                    # Wildcards don't work with letter (alpha/beta/etc.)
+                    # minor/micro releases, so we match the parent version
+                    if version.prefix not in ('', '.'):
+                        version = parent_version
+                    if parent_version:
+                        version.number = '*'
+                elif version.minor and version.minor.prefix not in ('', '.'):
+                    # Alpha/beta/release-candidates/etc. should be included
+                    version = version.minor
+                version.minor = None
+                break
+            parent_version = version
+
+    def align_specificity(self, other: 'Version') -> None:
+        """
+        Align the level of specificity of this version with that of the
+        provided `other` version.
+        """
+        assert isinstance(other, Version)
+        index_plus_one: int
+        version: Version
+        depth: int = 0
+        wildcard: bool = False
+        for index, version in enumerate(other._traverse(), 0):
+            depth = index
+            if version.number == '*':
+                wildcard = True
+                break
+        self.truncate(depth, wildcard=wildcard)
+
+    def __len__(self) -> int:
+        return sum(1 for _version in self._traverse())
+
+    def __str__(self) -> str:
+        return ''.join(
+            f'{version.prefix}{str(version.number)}'
+            for version in self._traverse()
+        )
+
+    def _compare(self, other: Union['Version', str]) -> int:
+        """
+        Compare this version to another version or version string, and return a
+        negative number if `self` precedes `other`, 0 if they are equal, or a
+        positive number if `other` precedes `self`
+        """
+        # Verify that the `other` can be compared with `self`
+        if isinstance(other, str):
+            other = Version(other)
+        else:
+            assert isinstance(other, Version)
+        return self._compare_version(other)
+
+    def _compare_version(self, other: 'Version') -> int:
+        """
+        Compare this version to another, and return a negative number if `self`
+        precedes `other`, 0 if they are equal, or a positive number if `other`
+        precedes `self`
+        """
+        for version in self._traverse():
+            # Compare prefixes
+            if version.prefix != other.prefix:
+                if other.prefix == '':
+                    return -1
+                elif version.prefix == '':
+                    return 1
+                elif other.prefix == '.':
+                    return -1
+                elif version.prefix == '.':
+                    return 1
+                else:
+                    return ord(version.prefix) - ord(other.prefix)
+            # Compare version numbers
+            if version.number == '*' or other.number == '*':
+                # Return a match if either is a wildcard
+                return 0
+            if version.number != other.number:
+                return version.number - other.number
+        return 0
+
+    def __gt__(self, other: Union['Version', str]) -> bool:
+        return self._compare(other) > 0
+
+    def __ge__(self, other: Union['Version', str]) -> bool:
+        return self._compare(other) >= 0
+
+    def __lt__(self, other: Union['Version', str]) -> bool:
+        return self._compare(other) < 0
+
+    def __le__(self, other: Union['Version', str]) -> bool:
+        return self._compare(other) <= 0
+
+    def __eq__(self, other: Union['Version', str]) -> bool:
+        return self._compare(other) == 0
+
+    def __bool__(self) -> bool:
+        return True
 
 
 def _get_updated_version_identifier(
@@ -46,22 +190,19 @@ def _get_updated_version_identifier(
     required_version: Optional[str],
     operator: str
 ) -> str:
-    version: str = installed_version
+    version_string: str
     if ('<' in operator) or ('!' in operator):
         # Versions associated with inequalities and less-than operators
         # should not be updated
-        version = required_version
+        version_string = required_version
     else:
-        version = _align_version_specificity(
-            installed_version,
-            required_version,
-            default_specificity=(
-                2
-                if operator == '~=' else
-                None
-            )
-        )
-    return version
+        version: Version = Version(installed_version)
+        if required_version:
+            version.align_specificity(Version(required_version))
+        elif operator == '~=':
+            version.truncate(1)
+        version_string = str(version)
+    return version_string
 
 
 def _get_updated_version_specifier(
