@@ -5,7 +5,9 @@ import re
 from collections import OrderedDict
 from copy import deepcopy
 from types import TracebackType
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import (
+    Any, Dict, List, Match, Optional, Pattern, Sequence, Set, Tuple, Union
+)
 
 import pkg_resources
 from more_itertools.recipes import grouper
@@ -68,7 +70,6 @@ class SetupScript(object):
         self._original_source: Optional[str] = None
         self.setup_calls: List[SetupCall] = []
         self._setup_call_locations: List[str] = []
-        self._setup_kwargs_code: Optional[str] = None
         if path is not None:
             self.open(path)
 
@@ -90,7 +91,7 @@ class SetupScript(object):
         self._parse()
 
     @property
-    def _get_setup_kwargs_code(self) -> str:
+    def _setup_kwargs_code(self) -> str:
         """
         This returns a modified version of the setup script which passes
         the keywords for each call to `setuptools.setup` to a dictionary, and
@@ -101,6 +102,8 @@ class SetupScript(object):
         character_index = 0
         parenthesis_imbalance = 0
         in_setup_call = False
+        redefinition_indent: Optional[int] = None
+        indent: int = 0
         # This is a list of tuples indicating the start and end indices
         # of a `setup` call within the script
         self._setup_call_locations = []  # Sequence[Tuple[int, int]]
@@ -121,6 +124,18 @@ class SetupScript(object):
                     2,
                     None
                 ):
+                    if preceding_code:
+                        match: Optional[Match] = re.search(
+                            r'(?:^|\n+)([ \t]+)', preceding_code
+                        )
+                        if match:
+                            indent = len(match.groups()[0])
+                    else:
+                        indent = 0
+                    if (redefinition_indent is not None) and (
+                        indent <= redefinition_indent
+                    ):
+                        redefinition_indent = None
                     script_parts.append(preceding_code)
                     # Determine where the setup call ends, if we are inside it
                     if in_setup_call:
@@ -146,18 +161,34 @@ class SetupScript(object):
                             )
                             parenthesis_imbalance = 0
                             in_setup_call = False
-                    # Parse the setup call, and modify the script to pass
-                    # the keyword arguments to a dictionary
+                    # If there is a match for `setuptools.setup` or `setup`,
+                    # and it's not part of a function definition (such as if
+                    # wrapping the setup call)...
                     if setup_call:
-                        self._setup_call_locations.append(
-                            [character_index + len(preceding_code), None]
-                        )
                         parenthesis_imbalance = -1
-                        in_setup_call = True
-                        script_parts.append(
-                            f'SETUP_KWARGS[{setup_call_index}] = dict('
-                        )
-                        setup_call_index += 1
+                        # if (
+                        #     redefinition_indent is not None
+                        # ) and (
+                        #     indent > redefinition_indent
+                        # ):
+                        #     script_parts.append(setup_call)
+                        if preceding_code and re.match(
+                            r'^(.|\n)*?\b(def|class)\s*$',
+                            preceding_code
+                        ):
+                            script_parts.append(setup_call)
+                            redefinition_indent = indent
+                        else:
+                            # Parse the setup call, and modify the script to
+                            # pass the keyword arguments to a dictionary
+                            self._setup_call_locations.append(
+                                [character_index + len(preceding_code), None]
+                            )
+                            in_setup_call = True
+                            script_parts.append(
+                                f'SETUP_KWARGS[{setup_call_index}] = dict('
+                            )
+                            setup_call_index += 1
                 character_index += len(code)
             if string_literal:
                 script_parts.append(string_literal)
@@ -166,9 +197,10 @@ class SetupScript(object):
             0,
             'SETUP_KWARGS = [%s]\n' % ', '.join(['None'] * setup_call_index)
         )
-        return ''.join(script_parts)
+        script: str = ''.join(script_parts)
+        return script
 
-    def get_setup_kwargs(self) -> Sequence[Dict[str, Any]]:
+    def get_setup_kwargs(self) -> List[Dict[str, Any]]:
         """
         Return an array of dictionaries where each represents the keyword
         arguments to a `setup` call
@@ -177,7 +209,7 @@ class SetupScript(object):
             '__file__': self.path
         }
         try:
-            exec(self._get_setup_kwargs_code, name_space)
+            exec(self._setup_kwargs_code, name_space)
         except Exception:  # noqa
             # Only raise an error if the script could not finish populating all
             # of the setup keyword arguments
@@ -187,17 +219,32 @@ class SetupScript(object):
                 name_space['SETUP_KWARGS'][-1] is not None
             ):
                 raise
-        return name_space['SETUP_KWARGS']
+        remove_setup_call_locations: Set[int] = set()
+        setup_kwargs: List[Dict[str, Any]] = []
+        for index, kwargs in enumerate(name_space['SETUP_KWARGS']):
+            if kwargs is None:
+                remove_setup_call_locations.add(index)
+            else:
+                setup_kwargs.append(kwargs)
+        if remove_setup_call_locations:
+            self._setup_call_locations = [
+                setup_call_location
+                for index, setup_call_location in enumerate(
+                    self._setup_call_locations
+                )
+                if index not in remove_setup_call_locations
+            ]
+        return setup_kwargs
 
     def _parse(self) -> None:
         """
         Parse all of the calls to `setuptools.setup`
         """
         parts = []
-        setup_kwargs = self.get_setup_kwargs()
-        length = len(setup_kwargs)
         character_index = 0
-        for index in range(length):
+        index: int
+        kwargs: Optional[Dict[str, Any]]
+        for index, kwargs in enumerate(self.get_setup_kwargs()):
             parts.append(
                 self._original_source[
                     character_index:
@@ -212,7 +259,7 @@ class SetupScript(object):
                 SetupCall(
                     self,
                     source=source,
-                    keyword_arguments=setup_kwargs[index]
+                    keyword_arguments=kwargs
                 )
             )
 
@@ -277,6 +324,7 @@ class SetupCall(OrderedDict):
         source: str,
         keyword_arguments: Dict[str, Any]
     ) -> None:
+        assert isinstance(keyword_arguments, dict)
         self.setup_script = setup_script
         self._value_locations = None
         self._kwargs = deepcopy(keyword_arguments)
@@ -314,22 +362,20 @@ class SetupCall(OrderedDict):
 
     @property
     def value_locations(self) -> List[Tuple[int, int]]:
-        if self._value_locations is None:
-            value_locations = []
-            keys = tuple(self.keys())
-            length = len(keys)
-            for index in range(length - 1):
-                key = keys[index]
-                value_locations.append((
-                    key,
-                    self._get_value_location(
-                        key, keys[index + 1]
-                    )
-                ))
-            key = keys[-1]
-            value_locations.append((key, self._get_value_location(key)))
-            self._value_locations = value_locations
-        return self._value_locations
+        value_locations: List[Tuple[int, int]] = []
+        keys = tuple(self.keys())
+        length = len(keys)
+        for index in range(length - 1):
+            key = keys[index]
+            value_locations.append((
+                key,
+                self._get_value_location(
+                    key, keys[index + 1]
+                )
+            ))
+        key = keys[-1]
+        value_locations.append((key, self._get_value_location(key)))
+        return value_locations
 
     def __str__(self):
         return repr(self)
