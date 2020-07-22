@@ -349,25 +349,30 @@ def update_setup(
     # Read the current `setup.py` configuration
     setup_script: parse.SetupScript
     with parse.SetupScript(setup_script_path) as setup_script:
-        for setup_call in setup_script.setup_calls:
-            if 'setup_requires' in setup_call:
+        try:
+            update_requirements_versions(
+                setup_script['setup_requires'],
+                default_operator=default_operator,
+                ignore=ignore
+            )
+        except KeyError:
+            pass
+        try:
+            update_requirements_versions(
+                setup_script['install_requires'],
+                default_operator=default_operator,
+                ignore=ignore
+            )
+        except KeyError:
+            pass
+        try:
+            for requirements in setup_script['extras_require'].values():
                 update_requirements_versions(
-                    setup_call['setup_requires'],
+                    requirements,
                     default_operator=default_operator,
                     ignore=ignore
                 )
-            if 'install_requires' in setup_call:
-                update_requirements_versions(
-                    setup_call['install_requires'],
-                    default_operator=default_operator,
-                    ignore=ignore
-                )
-            if 'extras_require' in setup_call:
-                for requirements in setup_call['extras_require'].values():
-                    update_requirements_versions(
-                        requirements,
-                        default_operator=default_operator,
-                        ignore=ignore
-                    )
-        modified = setup_script.save()
+        except KeyError:
+            pass
+    modified = setup_script.save()
     return modified
