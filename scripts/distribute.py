@@ -3,8 +3,6 @@ import os
 import sys
 from subprocess import getstatusoutput
 
-from setuptools_setup_versions.requirements import update_setup
-
 REPOSITORY_DIRECTORY = os.path.dirname(
     os.path.dirname(
         __file__
@@ -14,6 +12,7 @@ PACKAGE_NAME = REPOSITORY_DIRECTORY.split('/')[-1].split('\\')[-1]
 
 
 def run(command: str) -> str:
+    print(command)
     status, output = getstatusoutput(command)
     # Create an error if a non-zero exit status is encountered
     if status:
@@ -27,14 +26,12 @@ if __name__ == '__main__':
     os.chdir(
         REPOSITORY_DIRECTORY
     )
-    # Update `setup.py` to require currently installed versions of all packages
-    update_setup()
     try:
         # Build
-        run(
-            f'{sys.executable} setup.py sdist bdist_wheel upload clean --all'
-        )
+        run(f'{sys.executable} setup.py sdist bdist_wheel')
+        run(f'{sys.executable} -m twine upload dist/*')
     finally:
+        run(f'{sys.executable} setup.py clean --all')
         exec(
             open(REPOSITORY_DIRECTORY + '/scripts/clean.py').read(),
             {

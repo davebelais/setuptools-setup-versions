@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='setuptools-setup-versions',
-    version="1.2.3",
+    version="1.2.7",
     description=(
         "Automatically update setup.py `install_requires`, `extras_require`,"
         "and/or `setup_requires` version numbers for PIP packages"
@@ -15,19 +15,20 @@ setup(
         'setuptools_setup_versions'
     ],
     install_requires=[
-        "setuptools>=46.1",
-        "pip~=20.1",
-        "more-itertools~=8.2"
+        "setuptools>=50.0",
+        "pip~=20.2",
+        "more-itertools~=8.5"
     ],
     extras_require={
         "test": [
-            "tox~=3.14",
+            "tox~=3.19",
             "pytest~=5.4"
         ],
         "dev": [
-            "tox~=3.14",
+            "twine~=3.2",
+            "tox~=3.19",
             "pytest~=5.4",
-            "wheel~=0.34",
+            "wheel~=0.35",
             "readme-md-docstrings>=0.1.0,<1"
         ]
     }
