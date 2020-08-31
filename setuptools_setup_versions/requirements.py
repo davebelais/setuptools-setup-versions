@@ -315,13 +315,13 @@ def update_requirements_versions(
             (package_identifier not in ignore) and
             (package_identifier.split('[')[0] not in ignore)
         ):
-            #try:
-            requirements[index] = get_updated_version_requirement(
-                version_requirement,
-                default_operator=default_operator
-            )
-            #except:  # noqa
-            #    warn(''.join(format_exception(*sys.exc_info())))
+            try:
+                requirements[index] = get_updated_version_requirement(
+                    version_requirement,
+                    default_operator=default_operator
+                )
+            except:  # noqa
+               warn(''.join(format_exception(*sys.exc_info())))
 
 
 def update_setup(
