@@ -1,15 +1,15 @@
 import re
-from typing import (
-    Container, Iterable, Iterator, Optional, List, Pattern, Tuple, Union
-)
-from warnings import warn
 import sys
 from traceback import format_exception
+from typing import (
+    Container, Iterable, Iterator, List, Optional, Pattern, Union
+)
+from warnings import warn
 
 import pkg_resources
-from more_itertools import grouper, last
+from more_itertools import grouper
 
-from setuptools_setup_versions import parse, find
+from setuptools_setup_versions import find, parse
 
 _PACKAGE_VERSION_PATTERN: Pattern = re.compile(
     r'^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$'

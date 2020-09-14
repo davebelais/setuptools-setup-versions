@@ -2,15 +2,18 @@ import functools
 import json
 import os
 import re
+import sys
 from collections import OrderedDict
 from copy import deepcopy
-from io import BufferedReader, IOBase
-from itertools import chain
+from io import IOBase
+from subprocess import getstatusoutput
+from traceback import format_exception
 from types import TracebackType
 from typing import (
-    Any, Dict, Iterable, List, Match, Optional, Pattern, Sequence, Set, Tuple,
+    Any, Dict, Iterable, List, Optional, Pattern, Set, Tuple,
     Union
 )
+from warnings import warn
 
 import pkg_resources
 from more_itertools import chunked
@@ -108,6 +111,7 @@ class SetupCall(OrderedDict):
         stop: int = 0,
         line_length: int = 79
     ) -> None:
+        super().__init__()
         assert isinstance(keyword_arguments, dict)
         self.start = start
         self.stop = stop
@@ -632,7 +636,7 @@ def get_package_name_and_version_from_egg_info(
 
 
 @functools.lru_cache()
-def _get_package_names_versions() -> Dict[str, Any]:
+def _get_source_package_names_versions() -> Dict[str, Any]:
     """
     This returns a dictionary mapping package names -> version
     """
@@ -659,7 +663,7 @@ def _get_package_names_versions() -> Dict[str, Any]:
                 # This indicates a package with no setup script *or*
                 # egg-info was found, so it's not a package
                 pass
-        if name is not None:
+        if name:
             package_names_versions[name] = version
     return package_names_versions
 
@@ -677,7 +681,7 @@ def get_package_version(package_name: str) -> str:
     except pkg_resources.DistributionNotFound:
         # The package has no distribution information available--obtain it from
         # `setup.py`
-        for name, version_ in _get_package_names_versions().items():
+        for name, version_ in _get_source_package_names_versions().items():
             # If the package name is a match, we will return the version found
             if name and pkg_resources.Requirement.parse(
                 name
@@ -687,3 +691,75 @@ def get_package_version(package_name: str) -> str:
         if version is None:
             raise
     return version
+
+
+def _get_freeze_source_packages() -> Dict[str, str]:
+    """
+    Get a dictionary of package names mapped to a version requirement
+    identifier for packages found in the root of a `sys.path` directory
+    """
+    source_package_names: Dict[str, str] = OrderedDict()
+    version: str
+    source_package_name: str
+    for source_package_name, version in (
+        _get_source_package_names_versions().items()
+    ):
+        source_package_name = source_package_name.replace('_', '-')
+        package_version = f'{source_package_name}=={version}'
+        source_package_names[source_package_name] = package_version
+    return source_package_names
+
+
+def get_freeze(editable: bool = False) -> Iterable[str]:
+    """
+    Iterate over the packages installed/referenced in the current environment.
+
+    Parameters:
+
+    - editable (bool) = False: If `False` (the default), editable packages
+      will be returned as a package name + version identifier rather than
+      an editable requirement referencing a VCS.
+    """
+    status: int
+    output: str
+    status, output = getstatusoutput(
+        f'{sys.executable} -m pip freeze'
+    )
+    if status:
+        raise OSError(output)
+    source_package_names: Dict[str, str] = _get_freeze_source_packages()
+    # Get all installed packages
+    package_version: str
+    package_name: str
+    for package_version in output.split('\n'):
+        is_editable_requirement: bool = (
+            package_version.startswith('-e ')
+        )
+        package_name = package_version
+        # Get the package name
+        if is_editable_requirement:
+            if '#egg=' in package_version:
+                package_name = package_version.split('#egg=')[-1].replace(
+                    '_', '-'
+                )
+            else:
+                package_name = package_version[3:]
+        if (not editable) and is_editable_requirement:
+            package_version = package_name
+        if '==' in package_name:
+            package_name = package_name.split('==')[0].replace('_', '-')
+        elif (not editable) or (not is_editable_requirement):
+            package_version = (
+                f'{package_name}=='
+                f'{get_package_version(package_name)}'
+            )
+        # Make sure the package wasn't among the source packages already
+        # yielded
+        if package_name in source_package_names:
+            if editable:
+                yield package_version
+                del source_package_names[package_name]
+        else:
+            yield package_version
+    for package_version in source_package_names.values():
+        yield package_version
