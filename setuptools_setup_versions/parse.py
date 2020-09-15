@@ -1,5 +1,6 @@
 import functools
 import json
+import logging
 import os
 import re
 import sys
@@ -45,9 +46,11 @@ INDENT_LENGTH: int = 4
 INDENT: str = " " * INDENT_LENGTH
 
 
-def split_requirement(requirement: str) -> List[str]:
+def split_requirement_version_specifiers(requirement: str) -> List[str]:
     """
-    >>> split_requirement('package_name[option-a,option-b]>=1.1,<2.0.1')
+    >>> split_requirement_version_specifiers(
+    ...     'package_name[option-a,option-b]>=1.1,<2.0.1'
+    ... )
     ['package_name[option-a,option-b]>=1.1', '<2.0.1']
     """
     if ']' in requirement:
@@ -65,7 +68,7 @@ def split_requirement(requirement: str) -> List[str]:
 def get_requirement_package_identifier(requirement: str) -> str:
     return (
         PACKAGE_VERSION_PATTERN.match(
-            split_requirement(requirement)[0]
+            split_requirement_version_specifiers(requirement)[0]
         ).groups()[0].strip().split('@')[0]
     )
 
@@ -732,6 +735,8 @@ def _get_freeze_source_packages(
     Get a dictionary of package names mapped to a version requirement
     identifier for packages found in the root of a `sys.path` directory
     """
+    exclude = set(exclude)
+    include = set(include)
     source_package_names: Dict[str, str] = OrderedDict()
     version: str
     source_package_name: str
@@ -750,13 +755,13 @@ def _get_freeze_source_packages(
 def _get_installed_required_package_names(
     package_name: str,
     parallelize: bool = False,
-    traversed_package_names: Collection[str] = ()
+    exclude: Collection[str] = ()
 ) -> Set[str]:
     """
     Get the package name for all of a package's requirements, including extras
     """
     package_name = canonicalize_name(package_name)
-    traversed_package_names = set(traversed_package_names) | {package_name}
+    exclude = set(exclude) | {package_name}
     distribution_requires: Iterable[str]
     required_package_names: Set[str]
     try:
@@ -766,7 +771,9 @@ def _get_installed_required_package_names(
             )
         )
         required_package_names = set(map(
-            lambda required_distribution: required_distribution.name,
+            lambda required_distribution: canonicalize_name(
+                required_distribution.name
+            ),
             distribution.requires(
                 extras=tuple(filter(
                     lambda key: key is not None,
@@ -806,20 +813,27 @@ def _get_installed_required_package_names(
                 break
         if not found:
             return required_package_names
-    required_package_names -= traversed_package_names
+    required_package_names -= exclude
+    if required_package_names:
+        logging.info(
+            '"{}" requires: "{}"'.format(
+                package_name,
+                '", "'.join(required_package_names)
+            )
+        )
     if not required_package_names:
         return required_package_names
-    traversed_package_names |= required_package_names
+    exclude |= required_package_names
     parallelize_recursive_calls: bool = False
     if parallelize and len(required_package_names) < 2:
         parallelize = False
         parallelize_recursive_calls = True
-    traversed_package_names = tuple(sorted(traversed_package_names))
+    exclude = tuple(sorted(exclude))
     arguments: Iterable[Tuple[str, bool, Tuple[str, ...]]] = (
         (
             required_package_name,
             parallelize_recursive_calls,
-            traversed_package_names
+            exclude
         )
         for required_package_name in
         required_package_names
@@ -839,22 +853,70 @@ def _get_installed_required_package_names(
     return required_package_names
 
 
-def _flatten_requirements(requirements: Iterable[str]) -> Iterable[str]:
-    return chain(*(
-        (normalized_package_name,) +
-        tuple(_get_installed_required_package_names(
-            normalized_package_name,
-            True
-        ))
-        for normalized_package_name in (
-            canonicalize_name(package_name)
-            for package_name in (
-                (requirements,)
-                if isinstance(requirements, str) else
-                requirements
-            )
+def _flatten_requirements(
+    requirements: Iterable[str],
+    exclude: Union[str, Collection[str]] = ()
+) -> Iterable[str]:
+    exclude = set(
+        canonicalize_name(package_name)
+        for package_name in (
+            (exclude,)
+            if isinstance(exclude, str) else
+            exclude
         )
+    )
+    requirements = set(
+        canonicalize_name(package_name)
+        for package_name in (
+            (requirements,)
+            if isinstance(requirements, str) else
+            requirements
+        )
+    ) - exclude
+    return chain(*(
+        (package_name,) +
+        tuple(_get_installed_required_package_names(
+            package_name,
+            True,
+            tuple(sorted(exclude))
+        ))
+        for package_name in requirements
     ))
+
+
+def _get_pip_freeze(editable: bool = False) -> Iterable[Tuple[str, str]]:
+    status: int
+    output: str
+    status, output = getstatusoutput(
+        f'{sys.executable} -m pip freeze'
+    )
+    if status:
+        raise OSError(output)
+    # Get all installed packages
+    for requirement in output.split('\n'):
+        is_editable_requirement: bool = (
+            requirement.startswith('-e ') or
+            requirement.startswith('--editable ')
+        )
+        package_name = requirement
+        # Get the package name
+        if is_editable_requirement:
+            if '#egg=' in requirement:
+                package_name = canonicalize_name(
+                    requirement.split('#egg=')[-1]
+                )
+            else:
+                package_name = ' '.join(requirement.split(' ')[1:])
+        if (not editable) and is_editable_requirement:
+            requirement = package_name
+        if '==' in package_name:
+            package_name = canonicalize_name(package_name.split('==')[0])
+        elif (not editable) or (not is_editable_requirement):
+            requirement = (
+                f'{package_name}=='
+                f'{get_package_version(package_name)}'
+            )
+        yield package_name, requirement
 
 
 def get_freeze(
@@ -871,56 +933,31 @@ def get_freeze(
       will be returned as a package name + version identifier rather than
       an editable requirement referencing a VCS.
     """
-    package_version: str
+    requirement: str
     package_name: str
     # Normalize excluded/included package names and expand to include packages
     # required by the excluded/included package
-    include = set(_flatten_requirements(include))
-    exclude = set(_flatten_requirements(exclude)) - include
-    source_package_names: Dict[str, str] = _get_freeze_source_packages(
-        exclude=exclude,
-        include=include
+    include = set(_flatten_requirements(include, exclude=exclude))
+    exclude = exclude if include else set(_flatten_requirements(exclude))
+    source_package_names_requirements: Dict[str, str] = (
+        _get_freeze_source_packages(
+            exclude=exclude,
+            include=include
+        )
     )
     # Get the output of `pip freeze`
-    status: int
-    output: str
-    status, output = getstatusoutput(
-        f'{sys.executable} -m pip freeze'
-    )
-    if status:
-        raise OSError(output)
-    # Get all installed packages
-    for package_version in output.split('\n'):
-        is_editable_requirement: bool = (
-            package_version.startswith('-e ')
-        )
-        package_name = package_version
-        # Get the package name
-        if is_editable_requirement:
-            if '#egg=' in package_version:
-                package_name = canonicalize_name(
-                    package_version.split('#egg=')[-1]
-                )
-            else:
-                package_name = package_version[3:]
-        if (not editable) and is_editable_requirement:
-            package_version = package_name
-        if '==' in package_name:
-            package_name = canonicalize_name(package_name.split('==')[0])
-        elif (not editable) or (not is_editable_requirement):
-            package_version = (
-                f'{package_name}=='
-                f'{get_package_version(package_name)}'
-            )
+    for package_name, requirement in _get_pip_freeze(editable):
         if package_name not in exclude:
             if (not include) or (package_name in include):
                 # Make sure the package wasn't among the source packages
                 # already yielded
-                if package_name in source_package_names:
+                if package_name in source_package_names_requirements:
                     if editable:
-                        yield package_version
-                        del source_package_names[package_name]
+                        yield requirement
+                        del source_package_names_requirements[package_name]
                 else:
-                    yield package_version
-    for package_version in source_package_names.values():
-        yield package_version
+                    yield requirement
+    for package_name, requirement in source_package_names_requirements.items():
+        if package_name not in exclude:
+            if (not include) or (package_name in include):
+                yield requirement

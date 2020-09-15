@@ -10,7 +10,7 @@ import pkg_resources
 from more_itertools import grouper
 
 from . import find, parse
-from .parse import split_requirement
+from .parse import split_requirement_version_specifiers
 
 
 def _parse_version_number_string(
@@ -252,7 +252,7 @@ def get_updated_version_requirement(
       current package version with this operator. If not specified—package
       requirements without a version specifier will remain as-is.
     """
-    version_specifiers: List[str] = split_requirement(requirement)
+    version_specifiers: List[str] = split_requirement_version_specifiers(requirement)
     package_identifier: str
     version_specifier: str
     package_identifier, version_specifier = (
