@@ -29,7 +29,7 @@ if __name__ == '__main__':
     try:
         # Build
         run(f'{sys.executable} setup.py sdist bdist_wheel')
-        run(f'{sys.executable} -m twine upload dist/*')
+        run(f'{sys.executable} -m twine upload -r pypi dist/* --verbose')
     finally:
         run(f'{sys.executable} setup.py clean --all')
         exec(
