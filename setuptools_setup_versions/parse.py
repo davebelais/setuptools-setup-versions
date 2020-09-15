@@ -22,6 +22,9 @@ from packaging.utils import canonicalize_name
 
 from . import find
 
+PACKAGE_VERSION_PATTERN: Pattern = re.compile(
+    r'^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$'
+)
 STRING_LITERAL_RE = (
     # Make sure the quote is not escaped
     r'(?<!\\)('
@@ -40,6 +43,31 @@ _SETUP_CALL_PATTERN: Pattern = re.compile(
 )
 INDENT_LENGTH: int = 4
 INDENT: str = " " * INDENT_LENGTH
+
+
+def split_requirement(requirement: str) -> List[str]:
+    """
+    >>> split_requirement('package_name[option-a,option-b]>=1.1,<2.0.1')
+    ['package_name[option-a,option-b]>=1.1', '<2.0.1']
+    """
+    if ']' in requirement:
+        # Package options were specified
+        parts: List[str] = requirement.split(']')
+        package_specifier: str = f"{']'.join(parts[:-1])}]"
+        version_specifiers: List[str] = parts[-1].split(',')
+        return [
+            f'{package_specifier}{version_specifiers[0]}'
+        ] + version_specifiers[1:]
+    else:
+        return requirement.split(',')
+
+
+def get_requirement_package_identifier(requirement: str) -> str:
+    return (
+        PACKAGE_VERSION_PATTERN.match(
+            split_requirement(requirement)[0]
+        ).groups()[0].strip().split('@')[0]
+    )
 
 
 def _get_imbalance(
@@ -395,6 +423,12 @@ class SetupScript:
                 pass
         raise KeyError(key)
 
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
     @property
     @functools.lru_cache()
     def _source(self) -> str:
@@ -716,30 +750,63 @@ def _get_freeze_source_packages(
 def _get_installed_required_package_names(
     package_name: str,
     parallelize: bool = False,
-    traversed_package_names: Container[str] = ()
+    traversed_package_names: Collection[str] = ()
 ) -> Set[str]:
     """
     Get the package name for all of a package's requirements, including extras
     """
     package_name = canonicalize_name(package_name)
     traversed_package_names = set(traversed_package_names) | {package_name}
+    distribution_requires: Iterable[str]
+    required_package_names: Set[str]
     try:
         distribution: pkg_resources.Distribution = (
             pkg_resources.get_distribution(
                 package_name
             )
         )
-    except pkg_resources.DistributionNotFound:
-        return set()
-    required_package_names: Set[str] = set(map(
-        lambda required_distribution: required_distribution.name,
-        distribution.requires(
-            extras=tuple(filter(
-                lambda key: key is not None,
-                getattr(distribution, '_dep_map', {}).keys()
-            ))
-        )
-    )) - traversed_package_names
+        required_package_names = set(map(
+            lambda required_distribution: required_distribution.name,
+            distribution.requires(
+                extras=tuple(filter(
+                    lambda key: key is not None,
+                    getattr(distribution, '_dep_map', {}).keys()
+                ))
+            )
+        ))
+    except pkg_resources.DistributionNotFound as distribution_not_found_error:
+        found: bool = False
+        required_package_names = set()
+        for entry in pkg_resources.working_set.entries:
+            try:
+                setup_script_path: str = find.setup_script_path(entry)
+                setup_script: SetupScript = SetupScript(setup_script_path)
+                found = canonicalize_name(
+                    setup_script.get('name', '')
+                ) == package_name
+                if found:
+                    for requirement in (
+                        list(setup_script.get('install_requires', [])) +
+                        list(setup_script.get('setup_requires', [])) +
+                        list(chain(*setup_script.get(
+                            'extras_require', {}
+                        ).values()))
+                    ):
+                        required_package_names.add(
+                            canonicalize_name(
+                                get_requirement_package_identifier(
+                                    requirement
+                                )
+                            )
+                        )
+                    break
+            except FileNotFoundError:
+                continue
+            if found:
+                break
+        if not found:
+            return required_package_names
+    required_package_names -= traversed_package_names
     if not required_package_names:
         return required_package_names
     traversed_package_names |= required_package_names
@@ -748,7 +815,7 @@ def _get_installed_required_package_names(
         parallelize = False
         parallelize_recursive_calls = True
     traversed_package_names = tuple(sorted(traversed_package_names))
-    arguments: Iterable[Tuple[str, bool]] = (
+    arguments: Iterable[Tuple[str, bool, Tuple[str, ...]]] = (
         (
             required_package_name,
             parallelize_recursive_calls,
@@ -757,7 +824,6 @@ def _get_installed_required_package_names(
         for required_package_name in
         required_package_names
     )
-    parallelize = False
     if parallelize:
         pool: Pool
         with Pool() as pool:
@@ -809,8 +875,8 @@ def get_freeze(
     package_name: str
     # Normalize excluded/included package names and expand to include packages
     # required by the excluded/included package
-    exclude = set(_flatten_requirements(exclude))
     include = set(_flatten_requirements(include))
+    exclude = set(_flatten_requirements(exclude)) - include
     source_package_names: Dict[str, str] = _get_freeze_source_packages(
         exclude=exclude,
         include=include

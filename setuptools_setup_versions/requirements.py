@@ -2,18 +2,15 @@ import re
 import sys
 from traceback import format_exception
 from typing import (
-    Container, Iterable, Iterator, List, Optional, Pattern, Union
+    Container, Iterable, Iterator, List, Optional, Union
 )
 from warnings import warn
 
 import pkg_resources
 from more_itertools import grouper
 
-from setuptools_setup_versions import find, parse
-
-_PACKAGE_VERSION_PATTERN: Pattern = re.compile(
-    r'^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$'
-)
+from . import find, parse
+from .parse import split_requirement
 
 
 def _parse_version_number_string(
@@ -241,23 +238,6 @@ def _get_updated_version_specifier(
     return requirement_operator + version
 
 
-def _split_requirement(requirement: str) -> List[str]:
-    """
-    >>> _split_requirement('package_name[option-a,option-b]>=1.1,<2.0.1')
-    ['package_name[option-a,option-b]>=1.1', '<2.0.1']
-    """
-    if ']' in requirement:
-        # Package options were specified
-        parts: List[str] = requirement.split(']')
-        package_specifier: str = f"{']'.join(parts[:-1])}]"
-        version_specifiers: List[str] = parts[-1].split(',')
-        return [
-            f'{package_specifier}{version_specifiers[0]}'
-        ] + version_specifiers[1:]
-    else:
-        return requirement.split(',')
-
-
 def get_updated_version_requirement(
     requirement: str,
     default_operator: Optional[str] = None
@@ -272,12 +252,14 @@ def get_updated_version_requirement(
       current package version with this operator. If not specified—package
       requirements without a version specifier will remain as-is.
     """
-    version_specifiers: List[str] = _split_requirement(requirement)
+    version_specifiers: List[str] = split_requirement(requirement)
     package_identifier: str
     version_specifier: str
-    package_identifier, version_specifier = _PACKAGE_VERSION_PATTERN.match(
-        version_specifiers.pop(0)
-    ).groups()
+    package_identifier, version_specifier = (
+        parse.PACKAGE_VERSION_PATTERN.match(
+            version_specifiers.pop(0)
+        ).groups()
+    )
     if version_specifier or default_operator:
         version_specifiers.insert(0, version_specifier or '')
     return package_identifier + ','.join(
@@ -306,10 +288,8 @@ def update_requirements_versions(
     index: int
     version_requirement: str
     for index, version_requirement in enumerate(requirements):
-        package_identifier: str = (
-            _PACKAGE_VERSION_PATTERN.match(
-                _split_requirement(version_requirement)[0]
-            ).groups()[0].strip().split('@')[0]
+        package_identifier: str = parse.get_requirement_package_identifier(
+            version_requirement
         )
         if (
             (package_identifier not in ignore) and
