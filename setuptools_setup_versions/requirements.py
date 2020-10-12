@@ -252,19 +252,24 @@ def get_updated_version_requirement(
       current package version with this operator. If not specified—package
       requirements without a version specifier will remain as-is.
     """
-    version_specifiers: List[str] = split_requirement_version_specifiers(requirement)
+    version_specifiers: List[str] = split_requirement_version_specifiers(
+        requirement
+    )
     package_identifier: str
     version_specifier: str
-    package_identifier, version_specifier = (
+    package_identifier_and_options, version_specifier = (
         parse.PACKAGE_VERSION_PATTERN.match(
             version_specifiers.pop(0)
         ).groups()
     )
+    package_identifier: str = (
+        package_identifier_and_options.split('@')[0].split('[')[0]
+    )
     if version_specifier or default_operator:
         version_specifiers.insert(0, version_specifier or '')
-    return package_identifier + ','.join(
+    return package_identifier_and_options + ','.join(
         _get_updated_version_specifier(
-            package_identifier.split('@')[0],
+            package_identifier,
             version_specifier,
             default_operator
         )
