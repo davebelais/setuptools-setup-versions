@@ -30,13 +30,13 @@ STRING_LITERAL_RE = (
     # Make sure the quote is not escaped
     r'(?<!\\)('
     # Triple-double
-    r'"""(?:.|\n)*(?<!\\)"""|'
+    r'"""(?:.|\n)*?(?<!\\)"""|'
     # Triple-single
-    r"'''(?:.|\n)*(?<!\\)'''|"
+    r"'''(?:.|\n)*?(?<!\\)'''|"
     # Double
-    r'"[^\n]*(?<!\\)"(?!")|'
+    r'"[^\n]*?(?<!\\)"(?!")|'
     # Single
-    r"'[^\n]*(?<!\\)'(?!')"
+    r"'[^\n]*?(?<!\\)'(?!')"
     ')'
 )
 _SETUP_CALL_PATTERN: Pattern = re.compile(
@@ -638,14 +638,25 @@ class SetupScript:
         return modified
 
 
+@functools.lru_cache()
 def get_package_name_and_version_from_setup(
     path: Optional[str] = None
-) -> Tuple[str, Union[str, float, int]]:
+) -> Tuple[Union[str, float, int], ...]:
     """
     Get the version # of a package
     """
     setup_script: SetupScript = SetupScript(path)
-    return setup_script['name'], setup_script['version']
+    name_and_version: Tuple[Union[str, float, int], ...] = ()
+    key: str
+    for parameter in ('name', 'version'):
+        try:
+            name_and_version += (setup_script[parameter],)
+        except KeyError:
+            raise RuntimeError(
+                f'The parameter "{parameter}" was not found for `setup` in '
+                f'{path}:\n\n{setup_script._setup_kwargs_source}'
+            )
+    return name_and_version
 
 
 def get_package_name_and_version_from_egg_info(
@@ -875,7 +886,7 @@ def _flatten_requirements(
     ) - exclude
     return chain(*(
         (package_name,) +
-        tuple(_get_installed_required_package_names(
+        tuple(_get_installed_required_package_names(  # noqa
             package_name,
             True,
             tuple(sorted(exclude))
