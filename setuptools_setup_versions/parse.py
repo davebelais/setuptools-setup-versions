@@ -695,22 +695,19 @@ def _get_source_package_names_versions() -> Dict[str, Any]:
         name: str = ''
         version: str = ''
         try:
-            egg_info_path = find.egg_info(entry)
-        except (FileNotFoundError, NotADirectoryError):
-            egg_info_path = ''
-        if egg_info_path:
-            name, version = get_package_name_and_version_from_egg_info(
-                egg_info_path
+            # First look for a setup script
+            setup_script_path: str = find.setup_script_path(entry)
+            name, version = get_package_name_and_version_from_setup(
+                setup_script_path
             )
-        else:
+        except (FileNotFoundError, RuntimeError):
             try:
-                setup_script_path: str = find.setup_script_path(entry)
-                name, version = get_package_name_and_version_from_setup(
-                    setup_script_path
-                )
-            except FileNotFoundError:
-                # This indicates a package with no setup script *or*
-                # egg-info was found, so it's not a package
+                egg_info_path = find.egg_info(entry)
+                if egg_info_path:
+                    name, version = get_package_name_and_version_from_egg_info(
+                        egg_info_path
+                    )
+            except (FileNotFoundError, NotADirectoryError):
                 pass
         if name:
             package_names_versions[name] = version
@@ -718,9 +715,20 @@ def _get_source_package_names_versions() -> Dict[str, Any]:
 
 
 @functools.lru_cache()
+def _get_source_package_version(normalized_package_name: str) -> str:
+    name: str
+    version: str
+    for name, version in _get_source_package_names_versions().items():
+        # If the package name is a match, we will return the version found
+        if name and canonicalize_name(name) == normalized_package_name:
+            return version
+    return ''
+
+
+@functools.lru_cache()
 def get_package_version(package_name: str) -> str:
     normalized_package_name: str = canonicalize_name(package_name)
-    version: Optional[str] = None
+    version: str
     try:
         version = pkg_resources.get_distribution(
             normalized_package_name
@@ -728,26 +736,22 @@ def get_package_version(package_name: str) -> str:
     except pkg_resources.DistributionNotFound:
         # The package has no distribution information available--obtain it from
         # `setup.py`
-        for name, version_ in _get_source_package_names_versions().items():
-            # If the package name is a match, we will return the version found
-            if name and canonicalize_name(name) == normalized_package_name:
-                version = version_
-                break
-        if version is None:
+        version = _get_source_package_version(normalized_package_name)
+        if not version:
             raise
     return version
 
 
 def _get_freeze_source_packages(
-    exclude: Container[str] = (),
-    include: Union[str, Collection[str]] = ()
+    exclude: Iterable[str] = (),
+    include: Union[str, Iterable[str]] = ()
 ) -> Dict[str, str]:
     """
     Get a dictionary of package names mapped to a version requirement
     identifier for packages found in the root of a `sys.path` directory
     """
     exclude = set(exclude)
-    include = set(include)
+    include = {include} if isinstance(include, str) else set(include)
     source_package_names: Dict[str, str] = OrderedDict()
     version: str
     source_package_name: str
@@ -925,7 +929,7 @@ def _get_pip_freeze(editable: bool = False) -> Iterable[Tuple[str, str]]:
         elif (not editable) or (not is_editable_requirement):
             requirement = (
                 f'{package_name}=='
-                f'{get_package_version(package_name)}'
+                f'{_get_source_package_version(package_name)}'
             )
         yield package_name, requirement
 
