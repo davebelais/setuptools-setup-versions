@@ -728,18 +728,12 @@ def _get_source_package_version(normalized_package_name: str) -> str:
 @functools.lru_cache()
 def get_package_version(package_name: str) -> str:
     normalized_package_name: str = canonicalize_name(package_name)
-    version: str
-    try:
-        version = pkg_resources.get_distribution(
+    return (
+        _get_source_package_version(normalized_package_name) or
+        pkg_resources.get_distribution(
             normalized_package_name
         ).version
-    except pkg_resources.DistributionNotFound:
-        # The package has no distribution information available--obtain it from
-        # `setup.py`
-        version = _get_source_package_version(normalized_package_name)
-        if not version:
-            raise
-    return version
+    )
 
 
 def _get_freeze_source_packages(
