@@ -102,7 +102,7 @@ def setup(**kwargs) -> None:
 
 setup(
     name='setuptools-setup-versions',
-    version="1.6.0",
+    version="1.7.0",
     description=(
         "Automatically update setup.py `install_requires`, `extras_require`,"
         "and/or `setup_requires` version numbers for PIP packages"
@@ -128,7 +128,7 @@ setup(
         "dev": [
             "twine~=3.3",
             "tox~=3.20",
-            "pytest~=5.4",
+            "pytest>=5.4",
             "wheel~=0.36",
             "readme-md-docstrings>=0.1.0,<1",
             "daves-dev-tools~=0.3"
