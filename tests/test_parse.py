@@ -4,8 +4,7 @@ from typing import Any
 from urllib.parse import urljoin
 
 from setuptools_setup_versions import find, parse
-from setuptools_setup_versions.parse import \
-    get_package_name_and_version_from_setup
+from setuptools_setup_versions.parse import get_package_name_and_version_from_setup
 
 lru_cache: Any = functools.lru_cache
 
@@ -18,12 +17,12 @@ class TestClient(unittest.TestCase):
     @property  # type: ignore
     @lru_cache()
     def setup_script_path(self) -> str:
-        return find.setup_script_path(urljoin(__file__, '../'))
+        return find.setup_script_path(urljoin(__file__, "../"))
 
     @property  # type: ignore
     @lru_cache()
     def setup_script(self) -> parse.SetupScript:
-        return parse.SetupScript(self.setup_script_path)
+        return parse.get_setup_script(self.setup_script_path)
 
     def test_parse(self) -> None:
         with self.setup_script as setup_script:
@@ -35,10 +34,8 @@ class TestClient(unittest.TestCase):
             print("}")
 
     def test_get_package_name_and_version_from_setup(self) -> None:
-        print(get_package_name_and_version_from_setup(
-            self.setup_script_path
-        ))
+        print(get_package_name_and_version_from_setup(self.setup_script_path))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -21,9 +21,7 @@ _INSTALL_REQUIRES: str = "install_requires"
 _extras_pattern: Pattern = re.compile(r"^([^\[]+\[)([^\]]+)(\].*)$")
 
 
-def consolidate_requirement_options(
-    requirements: Iterable[str],
-) -> Iterable[str]:
+def consolidate_requirement_options(requirements: Iterable[str],) -> Iterable[str]:
     requirement: str
     templates_options: Dict[str, Set[str]] = OrderedDict()
     traversed_requirements: Set[str] = set()
@@ -85,15 +83,13 @@ def setup(**kwargs) -> None:
         print(
             "extras_require[all]:\n"
             + "\n".join(
-                f"- {requirement}"
-                for requirement in kwargs["extras_require"]["all"]
+                f"- {requirement}" for requirement in kwargs["extras_require"]["all"]
             )
         )
         print(
             "extras_require[test]:\n"
             + "\n".join(
-                f"- {requirement}"
-                for requirement in kwargs["extras_require"]["test"]
+                f"- {requirement}" for requirement in kwargs["extras_require"]["test"]
             )
         )
     # Pass the modified keyword arguments to `setuptools.setup`
@@ -101,37 +97,32 @@ def setup(**kwargs) -> None:
 
 
 setup(
-    name='setuptools-setup-versions',
-    version="1.7.0",
+    name="setuptools-setup-versions",
+    version="1.8.0",
     description=(
         "Automatically update setup.py `install_requires`, `extras_require`,"
         "and/or `setup_requires` version numbers for PIP packages"
     ),
-    author='David Belais',
-    author_email='david@belais.me',
-    python_requires='~=3.6',
-    keywords='setuptools install_requires version',
-    packages=[
-        'setuptools_setup_versions'
-    ],
+    author="David Belais",
+    author_email="david@belais.me",
+    python_requires="~=3.6",
+    keywords="setuptools install_requires version",
+    packages=["setuptools_setup_versions"],
     install_requires=[
         "setuptools>=51.1",
         "pip>=21.0",
         "more-itertools~=8.6",
-        "packaging~=20.8"
+        "packaging~=20.8",
     ],
     extras_require={
-        "test": [
-            "tox~=3.20",
-            "pytest~=5.4"
-        ],
+        "test": ["tox~=3.20", "pytest~=6.2"],
         "dev": [
             "twine~=3.3",
             "tox~=3.20",
-            "pytest>=5.4",
+            "pytest>=6.2",
             "wheel~=0.36",
             "readme-md-docstrings>=0.1.0,<1",
-            "daves-dev-tools~=0.3"
-        ]
-    }
+            "daves-dev-tools~=0.3",
+        ],
+    },
 )

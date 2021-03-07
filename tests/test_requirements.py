@@ -13,8 +13,8 @@ class TestClient(unittest.TestCase):
     """
 
     def test_version(self) -> None:
-        print(Version('0.1dev0'))
+        print(Version("0.1dev0"))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
