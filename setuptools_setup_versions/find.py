@@ -13,7 +13,9 @@ def egg_info(directory: str) -> Optional[str]:
     return egg_info_directory_path
 
 
-def setup_script_path(package_directory_or_setup_script: Optional[str] = None) -> str:
+def setup_script_path(
+    package_directory_or_setup_script: Optional[str] = None,
+) -> str:
     """
     Find the setup script
     """
@@ -36,5 +38,7 @@ def setup_script_path(package_directory_or_setup_script: Optional[str] = None) -
                 % package_directory_or_setup_script
             )
     if not os.path.isfile(setup_script_path):
-        raise FileNotFoundError("Setup script does not exist: " + setup_script_path)
+        raise FileNotFoundError(
+            "Setup script does not exist: " + setup_script_path
+        )
     return setup_script_path

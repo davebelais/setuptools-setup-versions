@@ -1,6 +1,5 @@
 import functools
 import json
-import logging
 import os
 import re
 import sys
@@ -20,6 +19,7 @@ from typing import (
     List,
     Optional,
     Pattern,
+    Sequence,
     Set,
     Tuple,
     Union,
@@ -32,7 +32,12 @@ from packaging.utils import canonicalize_name
 
 from . import find
 
-PACKAGE_VERSION_PATTERN: Pattern = re.compile(r"^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$")
+PACKAGE_VERSION_PATTERN: Pattern = re.compile(
+    r"^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$"
+)
+PACKAGE_NAME_EXTRAS_VERSION_PATTERN: Pattern = re.compile(
+    r"^\s*" r"([^\s~<>=\[\]]*)?" r"(?:\[([^]]+)])?" r"\s*" r"([~<>=].*?)?\s*$"
+)
 STRING_LITERAL_RE = (
     # Make sure the quote is not escaped
     r"(?<!\\)("
@@ -46,7 +51,9 @@ STRING_LITERAL_RE = (
     r"'[^\n]*?(?<!\\)'(?!')"
     ")"
 )
-_SETUP_CALL_PATTERN: Pattern = re.compile(r"((?:setuptools\.)?\bsetup\b[\s]*\()")
+_SETUP_CALL_PATTERN: Pattern = re.compile(
+    r"((?:setuptools\.)?\bsetup\b[\s]*\()"
+)
 INDENT_LENGTH: int = 4
 INDENT: str = " " * INDENT_LENGTH
 lru_cache: Callable[[Callable[..., Any]], Any] = functools.lru_cache
@@ -64,7 +71,9 @@ def split_requirement_version_specifiers(requirement: str) -> List[str]:
         parts: List[str] = requirement.split("]")
         package_specifier: str = f"{']'.join(parts[:-1])}]"
         version_specifiers: List[str] = parts[-1].split(",")
-        return [f"{package_specifier}{version_specifiers[0]}"] + version_specifiers[1:]
+        return [
+            f"{package_specifier}{version_specifiers[0]}"
+        ] + version_specifiers[1:]
     else:
         return requirement.split(",")
 
@@ -77,6 +86,27 @@ def get_requirement_package_identifier(requirement: str) -> str:
         .groups()[0]
         .strip()
         .split("@")[0]
+    )
+
+
+def get_requirement_name_extras(requirement: str) -> Tuple[str, Set[str]]:
+    """
+    Given a requirement identifier, this function returns a tuple
+    of the package name, and a tuple of extras.
+
+    >>> get_requirement_name_extras("package-name[test,dev]")
+    ('package-name', {'dev', 'test'})
+    """
+    groups: Sequence[str] = PACKAGE_NAME_EXTRAS_VERSION_PATTERN.match(
+        split_requirement_version_specifiers(requirement)[0]
+    ).groups()
+    return (
+        groups[0].strip().split("@")[0],
+        (
+            {extra.strip() for extra in groups[1].strip(" ,").split(",")}
+            if groups[1] and groups[1].strip(" ,")
+            else set()
+        ),
     )
 
 
@@ -236,12 +266,15 @@ class SetupCall(OrderedDict):
         parts = []
         index = 0
         for key, location in self.value_locations:
-            before = self._original_source[index : location[0]]
+            stop: int = location[0]
+            before = self._original_source[index:stop]
             if index and before[0] != ",":
                 before = "," + before
             parts.append(before)
             if self[key] == self._kwargs[key]:
-                parts.append(self._original_source[location[0] : location[1]])
+                start: int = location[0]
+                stop = location[1]
+                parts.append(self._original_source[start:stop])
             else:
                 parts.append(self._repr_value(self[key]))
             index = location[1]
@@ -260,7 +293,9 @@ def _get_setup_call_start_indices_and_parenthesis_imbalance(
     preceding_code, setup_call = next(
         iter(grouper(_SETUP_CALL_PATTERN.split(code), 2, None))  # noqa
     )
-    if setup_call and re.match(r"^.*\b(def|class)[ ]+$", preceding_code, re.DOTALL):
+    if setup_call and re.match(
+        r"^.*\b(def|class)[ ]+$", preceding_code, re.DOTALL
+    ):
         preceding_code += setup_call
         setup_call = None
     preceding_code_length: int = len(preceding_code or "")
@@ -289,7 +324,9 @@ def _get_setup_call_start_indices_and_parenthesis_imbalance(
         setup_call_character_indices
         + [
             (character_index + subsequent_character_index)
-            for subsequent_character_index in (subsequent_setup_call_character_indices)
+            for subsequent_character_index in (
+                subsequent_setup_call_character_indices
+            )
         ],
         parenthesis_imbalance,
     )
@@ -310,13 +347,20 @@ def _get_setup_call_indices_and_parenthesis_imbalance(
     start_index: Optional[int]
     next_index: Optional[int]
     stop_index: Optional[int]
-    for start_index, next_index in zip(start_indices, start_indices[1:] + [None]):
+    for start_index, next_index in zip(
+        start_indices, start_indices[1:] + [None]
+    ):
         try:
-            stop_index = code[start_index:next_index].rindex(")") + start_index + 1
+            stop_index = (
+                code[start_index:next_index].rindex(")") + start_index + 1
+            )
         except ValueError:
             stop_index = None
         range_indices.append(
-            (offset + start_index, None if stop_index is None else offset + stop_index)
+            (
+                offset + start_index,
+                None if stop_index is None else offset + stop_index,
+            )
         )
     return range_indices, parenthesis_imbalance
 
@@ -336,7 +380,9 @@ class SetupScript:
         return (
             self._input
             if (isinstance(self._input, str) and os.path.exists(self._input))
-            else getattr(self._input, "url", getattr(self._input, "name", None))
+            else getattr(
+                self._input, "url", getattr(self._input, "name", None)
+            )
         )
 
     def __iter__(self) -> Iterable[str]:
@@ -447,9 +493,9 @@ class SetupScript:
         the keywords for each call to `setuptools.setup` to a dictionary, and
         appends that dictionary to a list: `SETUP_KWARGS`
         """
-        setup_call_character_ranges: List[Tuple[int, int]] = (
-            self._setup_call_character_ranges
-        )
+        setup_call_character_ranges: List[
+            Tuple[int, int]
+        ] = self._setup_call_character_ranges
         script_parts: List[str] = [
             "SETUP_KWARGS = [{}]\n".format(
                 ", ".join(["None"] * len(setup_call_character_ranges))
@@ -464,9 +510,10 @@ class SetupScript:
             start, stop = start_stop
             script_parts.append(self._source[previous:start])
             setup_call = self._source[start:stop]
+            setup_call_index: int = setup_call.index("(")
             script_parts.append(
                 "SETUP_KWARGS[{}] = dict{}".format(
-                    index, setup_call[setup_call.index("(") :]
+                    index, setup_call[setup_call_index:]
                 )
             )
             previous = stop
@@ -500,7 +547,8 @@ class SetupScript:
                     SetupCall(
                         source=self._source[start:stop],
                         keyword_arguments=kwargs,
-                        line_length=79 - (len(before) - (before.rindex("\n") + 1)),
+                        line_length=79
+                        - (len(before) - (before.rindex("\n") + 1)),
                         start=start,
                         stop=stop,
                     )
@@ -514,7 +562,8 @@ class SetupScript:
         parts = []
         previous: int = 0
         for setup_call in self._setup_calls:
-            parts.append(self._source[previous : setup_call.start])
+            setup_call_start: int = setup_call.start
+            parts.append(self._source[previous:setup_call_start])
             parts.append(str(setup_call))
             previous = setup_call.stop
         if previous is not None:
@@ -603,7 +652,19 @@ def get_package_name_and_version_from_egg_info(
 
 
 @lru_cache()
-def _get_source_package_names_versions() -> Dict[str, Any]:
+def _get_installed_distributions() -> Dict[str, pkg_resources.Distribution]:
+    installed: Dict[str, pkg_resources.Distribution] = {}
+    for distribution in pkg_resources.working_set:
+        installed[canonicalize_name(distribution.project_name)] = distribution
+    return installed
+
+
+def get_distribution(name: str) -> pkg_resources.Distribution:
+    return _get_installed_distributions()[canonicalize_name(name)]
+
+
+@lru_cache()
+def _get_distributions_names_versions() -> Dict[str, Any]:
     """
     This returns a dictionary mapping package names -> version
     """
@@ -615,7 +676,9 @@ def _get_source_package_names_versions() -> Dict[str, Any]:
         try:
             # First look for a setup script
             setup_script_path: str = find.setup_script_path(entry)
-            name, version = get_package_name_and_version_from_setup(setup_script_path)
+            name, version = get_package_name_and_version_from_setup(
+                setup_script_path
+            )
         except (FileNotFoundError, RuntimeError):
             try:
                 egg_info_path = find.egg_info(entry)
@@ -631,10 +694,10 @@ def _get_source_package_names_versions() -> Dict[str, Any]:
 
 
 @lru_cache()
-def _get_source_package_version(normalized_package_name: str) -> str:
+def _get_distribution_version(normalized_package_name: str) -> str:
     name: str
     version: str
-    for name, version in _get_source_package_names_versions().items():
+    for name, version in _get_distributions_names_versions().items():
         # If the package name is a match, we will return the version found
         if name and canonicalize_name(name) == normalized_package_name:
             return version
@@ -645,8 +708,8 @@ def _get_source_package_version(normalized_package_name: str) -> str:
 def get_package_version(package_name: str) -> str:
     normalized_package_name: str = canonicalize_name(package_name)
     return (
-        _get_source_package_version(normalized_package_name)
-        or pkg_resources.get_distribution(normalized_package_name).version
+        _get_distribution_version(normalized_package_name)
+        or get_distribution(normalized_package_name).version
     )
 
 
@@ -662,7 +725,10 @@ def _get_freeze_source_packages(
     source_package_names: Dict[str, str] = OrderedDict()
     version: str
     source_package_name: str
-    for source_package_name, version in _get_source_package_names_versions().items():
+    for (
+        source_package_name,
+        version,
+    ) in _get_distributions_names_versions().items():
         source_package_name = canonicalize_name(source_package_name)
         package_version = f"{source_package_name}=={version}"
         if source_package_name not in exclude:
@@ -672,89 +738,166 @@ def _get_freeze_source_packages(
 
 
 @lru_cache()
-def _get_installed_required_package_names(
-    package_name: str, parallelize: bool = False, exclude: Collection[str] = ()
-) -> Set[str]:
+def _get_editable_distributions_setup_scripts() -> Dict[str, str]:
+    names_locations: Dict[str, str] = {}
+    for entry in pkg_resources.working_set.entries:
+        try:
+            path: str = find.setup_script_path(entry)
+            setup_script: SetupScript = get_setup_script(path)
+            names_locations[
+                canonicalize_name(setup_script.get("name", ""))
+            ] = path
+        except FileNotFoundError:
+            pass
+    return names_locations
+
+
+@lru_cache()
+def _get_editable_distribution_setup_script(name: str) -> str:
+    return _get_editable_distributions_setup_scripts()[name]
+
+
+@lru_cache()
+def get_package_location(name: str = "") -> str:
     """
-    Get the package name for all of a package's requirements, including extras
+    Find the directory in which a package is installed
     """
-    package_name = canonicalize_name(package_name)
-    exclude = set(exclude) | {package_name}
-    distribution_requires: Iterable[str]
-    required_package_names: Set[str]
     try:
-        distribution: pkg_resources.Distribution = (
-            pkg_resources.get_distribution(package_name)
+        distribution: pkg_resources.Distribution = get_distribution(name)
+        return distribution.location
+    except pkg_resources.DistributionNotFound:
+        return os.path.dirname(_get_editable_distribution_setup_script(name))
+
+
+@lru_cache()
+def _get_editable_distribution_requirements_extras(
+    name: str = "",
+    extras: Tuple[str, ...] = (),
+) -> Dict[str, Set[str]]:
+    """
+    Get a dictionary mapping package names to extras for a given editable
+    distribution
+    """
+    path: str = _get_editable_distribution_setup_script(name)
+    setup_script: SetupScript = get_setup_script(path)
+    if canonicalize_name(setup_script.get("name", "")) != name:
+        raise FileNotFoundError(
+            f"The distribution described in {path} is not {name}"
         )
-        required_package_names = set(
-            map(
-                lambda required_distribution: canonicalize_name(
-                    required_distribution.name
+    names_extras: Dict[str, Set[str]] = {}
+    extras_set: Set[str] = set(extras)
+    requirement_name: str
+    requirement_extras: Set[str]
+    for requirement_name, requirement_extras in map(
+        get_requirement_name_extras,
+        map(
+            canonicalize_name,
+            chain(
+                setup_script.get("install_requires", ()),
+                setup_script.get("setup_requires", ()),
+                *map(
+                    lambda item: item[1],
+                    filter(
+                        lambda item: item[0] in extras_set,
+                        setup_script.get("extras_require", {}).items(),
+                    ),
                 ),
-                distribution.requires(
-                    extras=tuple(
-                        filter(
-                            lambda key: key is not None,
-                            getattr(distribution, "_dep_map", {}).keys(),
-                        )
-                    )
-                ),
-            )
+            ),
+        ),
+    ):
+        if requirement_name in names_extras:
+            names_extras[requirement_name] |= requirement_extras
+        else:
+            names_extras[requirement_name] = requirement_extras
+    return names_extras
+
+
+@lru_cache()
+def _get_installed_distribution_requirements_extras(
+    name: str = "",
+    extras: Tuple[str, ...] = (),
+) -> Dict[str, Set[str]]:
+    """
+    Get a dictionary mapping package names to extras for a given distribution
+    """
+    distribution: pkg_resources.Distribution = get_distribution(name)
+    names_extras: Dict[str, Set[str]] = {}
+    requirement: pkg_resources.Requirement
+    requirement_name: str
+    requirement_extras: Tuple[str, ...]
+    for requirement in distribution.requires(extras=extras):
+        requirement_project_name: str
+        if requirement.project_name in names_extras:
+            names_extras[requirement.project_name] |= set(requirement.extras)
+        else:
+            names_extras[requirement.project_name] = set(requirement.extras)
+    return names_extras
+
+
+def get_distribution_requirement_names(
+    name: str, extras: Collection[str] = (), exclude: Collection[str] = ()
+) -> Set[str]:
+    if not isinstance(extras, tuple):
+        extras = tuple(sorted(set(extras or ())))
+    if not isinstance(exclude, tuple):
+        exclude = tuple(sorted(exclude or ()))
+    return _get_distribution_requirement_names(
+        name, extras=extras, exclude=exclude
+    )
+
+
+@lru_cache()
+def _get_distribution_requirement_names(
+    name: str,
+    extras: Tuple[str, ...] = (),
+    exclude: Tuple[str, ...] = (),
+    parallelize: bool = True,
+) -> Set[str]:
+    exclude_set = set(map(canonicalize_name, exclude))
+    # Extract any extras passed as part of the package identifier
+    if "[" in name:
+        name_extras: Set[str]
+        name, name_extras = get_requirement_name_extras(name)
+        extras = tuple(sorted(set(extras) | name_extras))
+    name = canonicalize_name(name)
+    # Exclude looping references
+    exclude_set.add(name)
+    names_extras: Dict[str, Set[str]]
+    try:
+        names_extras = _get_editable_distribution_requirements_extras(
+            name, extras
         )
-    except pkg_resources.DistributionNotFound as distribution_not_found_error:
-        found: bool = False
-        required_package_names = set()
-        for entry in pkg_resources.working_set.entries:
-            try:
-                setup_script_path: str = find.setup_script_path(entry)
-                setup_script: SetupScript = get_setup_script(setup_script_path)
-                found = canonicalize_name(setup_script.get("name", "")) == package_name
-                if found:
-                    for requirement in (
-                        list(setup_script.get("install_requires", []))
-                        + list(setup_script.get("setup_requires", []))
-                        + list(chain(*setup_script.get("extras_require", {}).values()))
-                    ):
-                        required_package_names.add(
-                            canonicalize_name(
-                                get_requirement_package_identifier(requirement)
-                            )
-                        )
-                    break
-            except FileNotFoundError:
-                continue
-            if found:
-                break
-        if not found:
-            return required_package_names
-    required_package_names -= exclude
-    if required_package_names:
-        logging.info(
-            '"{}" requires: "{}"'.format(
-                package_name, '", "'.join(required_package_names)
-            )
+    except (FileNotFoundError, KeyError):
+        names_extras = _get_installed_distribution_requirements_extras(
+            name, extras
         )
-    if not required_package_names:
-        return required_package_names
-    exclude |= required_package_names
-    parallelize_recursive_calls: bool = False
-    if parallelize and len(required_package_names) < 2:
-        parallelize = False
-        parallelize_recursive_calls = True
-    exclude = tuple(sorted(exclude))
-    arguments: Iterable[Tuple[str, bool, Tuple[str, ...]]] = (
-        (required_package_name, parallelize_recursive_calls, exclude)
-        for required_package_name in required_package_names
+    required_package_name: str
+    required_package_names: Set[str] = set(names_extras.keys()) - exclude_set
+    exclude_set |= required_package_names
+    exclude = tuple(exclude_set)
+    item: Tuple[str, Tuple[str, ...]]
+    arguments: Iterable[
+        Tuple[str, Tuple[str, ...], Tuple[str, ...], bool]
+    ] = map(
+        lambda item: (item[0], tuple(sorted(item[1])), exclude, False),
+        filter(
+            lambda item: item[0] in required_package_names,
+            names_extras.items(),
+        ),
     )
     if parallelize:
         pool: Pool
         with Pool() as pool:
             required_package_names |= set(
-                chain(*pool.starmap(_get_installed_required_package_names, arguments))
+                chain(
+                    *pool.starmap(
+                        _get_distribution_requirement_names, arguments
+                    )
+                )
             )
     else:
         required_package_names |= set(
-            chain(*starmap(_get_installed_required_package_names, arguments))
+            chain(*starmap(_get_distribution_requirement_names, arguments))
         )
     return required_package_names
 
@@ -762,15 +905,19 @@ def _get_installed_required_package_names(
 def _flatten_requirements(
     requirements: Iterable[str], exclude: Union[str, Collection[str]] = ()
 ) -> Iterable[str]:
-    exclude = set(
+    exclude = {
         canonicalize_name(package_name)
-        for package_name in ((exclude,) if isinstance(exclude, str) else exclude)
-    )
+        for package_name in (
+            (exclude,) if isinstance(exclude, str) else exclude
+        )
+    }
     requirements = (
         set(
             canonicalize_name(package_name)
             for package_name in (
-                (requirements,) if isinstance(requirements, str) else requirements
+                (requirements,)
+                if isinstance(requirements, str)
+                else requirements
             )
         )
         - exclude
@@ -779,8 +926,8 @@ def _flatten_requirements(
         *(
             (package_name,)
             + tuple(
-                _get_installed_required_package_names(  # noqa
-                    package_name, True, tuple(sorted(exclude))
+                get_distribution_requirement_names(  # noqa
+                    package_name, tuple(sorted(exclude))
                 )
             )
             for package_name in requirements
@@ -796,14 +943,16 @@ def _get_pip_freeze(editable: bool = False) -> Iterable[Tuple[str, str]]:
         raise OSError(output)
     # Get all installed packages
     for requirement in output.split("\n"):
-        is_editable_requirement: bool = (
-            requirement.startswith("-e ") or requirement.startswith("--editable ")
-        )
+        is_editable_requirement: bool = requirement.startswith(
+            "-e "
+        ) or requirement.startswith("--editable ")
         package_name = requirement
         # Get the package name
         if is_editable_requirement:
             if "#egg=" in requirement:
-                package_name = canonicalize_name(requirement.split("#egg=")[-1])
+                package_name = canonicalize_name(
+                    requirement.split("#egg=")[-1]
+                )
             else:
                 package_name = " ".join(requirement.split(" ")[1:])
         if (not editable) and is_editable_requirement:
@@ -812,9 +961,30 @@ def _get_pip_freeze(editable: bool = False) -> Iterable[Tuple[str, str]]:
             package_name = canonicalize_name(package_name.split("==")[0])
         elif (not editable) or (not is_editable_requirement):
             requirement = (
-                f"{package_name}==" f"{_get_source_package_version(package_name)}"
+                f"{package_name}=="
+                f"{_get_distribution_version(package_name)}"
             )
         yield package_name, requirement
+
+
+def get_distribution_freeze(
+    name: str, exclude: Union[str, Collection[str]] = ()
+) -> Iterable[str]:
+    required_distribution_name: str
+    return tuple(
+        map(
+            lambda required_distribution_name: (
+                f"{required_distribution_name}=="
+                f"{get_package_version(required_distribution_name)}"
+            ),
+            sorted(
+                get_distribution_requirement_names(name, exclude=exclude),
+                key=lambda required_distribution_name: (
+                    required_distribution_name.lower()
+                ),
+            ),
+        )
+    )
 
 
 def get_freeze(
@@ -837,9 +1007,9 @@ def get_freeze(
     # required by the excluded/included package
     include = set(_flatten_requirements(include, exclude=exclude))
     exclude = exclude if include else set(_flatten_requirements(exclude))
-    source_package_names_requirements: Dict[str, str] = (
-        _get_freeze_source_packages(exclude=exclude, include=include)
-    )
+    source_package_names_requirements: Dict[
+        str, str
+    ] = _get_freeze_source_packages(exclude=exclude, include=include)
     # Get the output of `pip freeze`
     for package_name, requirement in _get_pip_freeze(editable):
         if package_name not in exclude:

@@ -14,7 +14,9 @@ def test_setup_script_path() -> None:
     os.chdir(urljoin(__file__, "../"))
     # Verify the expected results
     assert find.setup_script_path("./").replace("\\", "/") == "./setup.py"
-    assert find.setup_script_path("./setup.py").replace("\\", "/") == "./setup.py"
+    assert (
+        find.setup_script_path("./setup.py").replace("\\", "/") == "./setup.py"
+    )
 
 
 def test_egg_info() -> None:

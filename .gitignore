@@ -12,6 +12,9 @@ venv/**
 **/__pycache__/**
 **/.DS_Store
 *.egg-info/**
+*.eggs/**
 **/*.egg-info
-!*.gitignore
+!.gitignore
+!.dockerignore
+!.flake8
 !.tox

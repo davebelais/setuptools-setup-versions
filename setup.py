@@ -21,7 +21,9 @@ _INSTALL_REQUIRES: str = "install_requires"
 _extras_pattern: Pattern = re.compile(r"^([^\[]+\[)([^\]]+)(\].*)$")
 
 
-def consolidate_requirement_options(requirements: Iterable[str],) -> Iterable[str]:
+def consolidate_requirement_options(
+    requirements: Iterable[str],
+) -> Iterable[str]:
     requirement: str
     templates_options: Dict[str, Set[str]] = OrderedDict()
     traversed_requirements: Set[str] = set()
@@ -83,13 +85,15 @@ def setup(**kwargs) -> None:
         print(
             "extras_require[all]:\n"
             + "\n".join(
-                f"- {requirement}" for requirement in kwargs["extras_require"]["all"]
+                f"- {requirement}"
+                for requirement in kwargs["extras_require"]["all"]
             )
         )
         print(
             "extras_require[test]:\n"
             + "\n".join(
-                f"- {requirement}" for requirement in kwargs["extras_require"]["test"]
+                f"- {requirement}"
+                for requirement in kwargs["extras_require"]["test"]
             )
         )
     # Pass the modified keyword arguments to `setuptools.setup`
@@ -98,7 +102,7 @@ def setup(**kwargs) -> None:
 
 setup(
     name="setuptools-setup-versions",
-    version="1.8.0",
+    version="1.9.0",
     description=(
         "Automatically update setup.py `install_requires`, `extras_require`,"
         "and/or `setup_requires` version numbers for PIP packages"

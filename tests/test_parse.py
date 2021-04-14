@@ -4,7 +4,9 @@ from typing import Any
 from urllib.parse import urljoin
 
 from setuptools_setup_versions import find, parse
-from setuptools_setup_versions.parse import get_package_name_and_version_from_setup
+from setuptools_setup_versions.parse import (
+    get_package_name_and_version_from_setup,
+)
 
 lru_cache: Any = functools.lru_cache
 

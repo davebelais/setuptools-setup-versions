@@ -50,7 +50,9 @@ def create_setup_script(
     if SetupScriptComponents.SHEBANG in elements:
         lines.append("#!/usr/bin/python\n\n")
     if SetupScriptComponents.DOCSTRING in elements:
-        lines.append('"""\n' "This is a test.\n" "This is only a test.\n" '"""\n\n')
+        lines.append(
+            '"""\n' "This is a test.\n" "This is only a test.\n" '"""\n\n'
+        )
     if SetupScriptComponents.IMPORT_SETUPTOOLS_MODULE in elements:
         lines.append("import setuptools\n\n")
     else:

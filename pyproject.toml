@@ -1,6 +1,14 @@
 [build-system]
 requires = [
     "setuptools",
-    "wheel"
+    "wheel",
+    "pypandoc"
 ]
 build-backend = "setuptools.build_meta"
+[tool.black]
+line-length = 79
+target-version = [
+    "py36",
+    "py37",
+    "py38"
+]

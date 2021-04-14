@@ -11,7 +11,9 @@ from . import find, parse
 from .parse import split_requirement_version_specifiers
 
 
-def _parse_version_number_string(version_number_string: str) -> Union[str, int]:
+def _parse_version_number_string(
+    version_number_string: str,
+) -> Union[str, int]:
     return (
         version_number_string
         if version_number_string == "*"
@@ -108,7 +110,8 @@ class Version:
 
     def __str__(self) -> str:
         return "".join(
-            f"{version.prefix}{str(version.number)}" for version in self._traverse()
+            f"{version.prefix}{str(version.number)}"
+            for version in self._traverse()
         )
 
     def _compare(self, other: Union["Version", str]) -> int:
@@ -189,7 +192,9 @@ def _get_updated_version_identifier(
 
 
 def _get_updated_version_specifier(
-    package_name: str, version_specifier: str, default_operator: Optional[str] = None
+    package_name: str,
+    version_specifier: str,
+    default_operator: Optional[str] = None,
 ) -> str:
     """
     Get a requirement string updated to reflect the current package version
@@ -206,7 +211,9 @@ def _get_updated_version_specifier(
     # this resource
     try:
         version = _get_updated_version_identifier(
-            parse.get_package_version(package_name), version, requirement_operator
+            parse.get_package_version(package_name),
+            version,
+            requirement_operator,
         )
     except pkg_resources.DistributionNotFound:
         warn(
@@ -230,16 +237,18 @@ def get_updated_version_requirement(
       current package version with this operator. If not specified—package
       requirements without a version specifier will remain as-is.
     """
-    version_specifiers: List[str] = split_requirement_version_specifiers(requirement)
+    version_specifiers: List[str] = split_requirement_version_specifiers(
+        requirement
+    )
     package_identifier: str
     version_specifier: str
     (
         package_identifier_and_options,
         version_specifier,
     ) = parse.PACKAGE_VERSION_PATTERN.match(version_specifiers.pop(0)).groups()
-    package_identifier: str = (
-        package_identifier_and_options.split("@")[0].split("[")[0]
-    )
+    package_identifier: str = package_identifier_and_options.split("@")[
+        0
+    ].split("[")[0]
     if version_specifier or default_operator:
         version_specifiers.insert(0, version_specifier or "")
     return package_identifier_and_options + ",".join(
@@ -299,7 +308,9 @@ def update_setup(
 
     Returns: `True` if changes were made to setup.py, otherwise `False`
     """
-    setup_script_path: str = find.setup_script_path(package_directory_or_setup_script)
+    setup_script_path: str = find.setup_script_path(
+        package_directory_or_setup_script
+    )
     # Read the current `setup.py` configuration
     setup_script: parse.SetupScript
     with parse.get_setup_script(setup_script_path) as setup_script:
@@ -322,7 +333,9 @@ def update_setup(
         try:
             for requirements in setup_script["extras_require"].values():
                 update_requirements_versions(
-                    requirements, default_operator=default_operator, ignore=ignore
+                    requirements,
+                    default_operator=default_operator,
+                    ignore=ignore,
                 )
         except KeyError:
             pass
