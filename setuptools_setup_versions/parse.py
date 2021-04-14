@@ -754,6 +754,7 @@ def _get_editable_distributions_setup_scripts() -> Dict[str, str]:
 
 @lru_cache()
 def _get_editable_distribution_setup_script(name: str) -> str:
+    name = canonicalize_name(name)
     return _get_editable_distributions_setup_scripts()[name]
 
 
@@ -762,6 +763,7 @@ def get_package_location(name: str = "") -> str:
     """
     Find the directory in which a package is installed
     """
+    name = canonicalize_name(name)
     try:
         distribution: pkg_resources.Distribution = get_distribution(name)
         return distribution.location
@@ -868,6 +870,14 @@ def _get_distribution_requirement_names(
     ]
     required_package_name: str
     required_package_names: Set[str]
+    errors: List[
+        Union[
+            FileNotFoundError,
+            KeyError,
+            pkg_resources.DistributionNotFound,
+            None,
+        ]
+    ] = []
     # Here we pull requirements both from setup files and from installed
     # distribution metadata, in case updates have been made to an editable
     # package setup files since the install was performed
@@ -888,8 +898,10 @@ def _get_distribution_requirement_names(
             FileNotFoundError,
             KeyError,
             pkg_resources.DistributionNotFound,
-        ):
-            pass
+        ) as error:
+            errors.append(error)
+    if len(errors) > 1:
+        raise errors[0]
     required_package_names = set(names_extras.keys()) - exclude_set
     exclude_set |= required_package_names
     exclude = tuple(exclude_set)

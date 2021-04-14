@@ -102,7 +102,7 @@ def setup(**kwargs) -> None:
 
 setup(
     name="setuptools-setup-versions",
-    version="1.10.0",
+    version="1.11.0",
     description=(
         "Automatically update setup.py `install_requires`, `extras_require`,"
         "and/or `setup_requires` version numbers for PIP packages"
