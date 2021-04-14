@@ -862,17 +862,35 @@ def _get_distribution_requirement_names(
     name = canonicalize_name(name)
     # Exclude looping references
     exclude_set.add(name)
-    names_extras: Dict[str, Set[str]]
-    try:
-        names_extras = _get_editable_distribution_requirements_extras(
-            name, extras
-        )
-    except (FileNotFoundError, KeyError):
-        names_extras = _get_installed_distribution_requirements_extras(
-            name, extras
-        )
+    names_extras: Dict[str, Set[str]] = {}
+    get_distribution_requirements_extras: Callable[
+        [str, Tuple[str, ...]], Dict[str, Set[str]]
+    ]
     required_package_name: str
-    required_package_names: Set[str] = set(names_extras.keys()) - exclude_set
+    required_package_names: Set[str]
+    # Here we pull requirements both from setup files and from installed
+    # distribution metadata, in case updates have been made to an editable
+    # package setup files since the install was performed
+    for get_distribution_requirements_extras in (
+        _get_editable_distribution_requirements_extras,
+        _get_installed_distribution_requirements_extras,
+    ):
+        try:
+            for (
+                key,
+                required_package_names,
+            ) in get_distribution_requirements_extras(name, extras).items():
+                if key in names_extras:
+                    names_extras[key] |= required_package_names
+                else:
+                    names_extras[key] = required_package_names
+        except (
+            FileNotFoundError,
+            KeyError,
+            pkg_resources.DistributionNotFound,
+        ):
+            pass
+    required_package_names = set(names_extras.keys()) - exclude_set
     exclude_set |= required_package_names
     exclude = tuple(exclude_set)
     item: Tuple[str, Tuple[str, ...]]
