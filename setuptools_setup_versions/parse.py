@@ -957,7 +957,7 @@ def _flatten_requirements(
             (package_name,)
             + tuple(
                 get_distribution_requirement_names(  # noqa
-                    package_name, tuple(sorted(exclude))
+                    package_name, exclude=tuple(sorted(exclude))
                 )
             )
             for package_name in requirements
