@@ -828,11 +828,11 @@ def _get_installed_distribution_requirements_extras(
     requirement_name: str
     requirement_extras: Tuple[str, ...]
     for requirement in distribution.requires(extras=extras):
-        requirement_project_name: str
-        if requirement.project_name in names_extras:
-            names_extras[requirement.project_name] |= set(requirement.extras)
+        requirement_project_name: str = canonicalize_name(requirement.key)
+        if requirement_project_name in names_extras:
+            names_extras[requirement_project_name] |= set(requirement.extras)
         else:
-            names_extras[requirement.project_name] = set(requirement.extras)
+            names_extras[requirement_project_name] = set(requirement.extras)
     return names_extras
 
 
