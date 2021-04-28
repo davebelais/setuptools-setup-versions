@@ -28,7 +28,6 @@ def consolidate_requirement_options(
     templates_options: Dict[str, Set[str]] = OrderedDict()
     traversed_requirements: Set[str] = set()
     for requirement in requirements:
-        print(requirement)
         match: Optional[Match] = _extras_pattern.match(requirement)
         if match:
             groups: Sequence[str] = match.groups()
@@ -102,7 +101,7 @@ def setup(**kwargs) -> None:
 
 setup(
     name="setuptools-setup-versions",
-    version="1.13.0",
+    version="1.15.0",
     description=(
         "Automatically update setup.py `install_requires`, `extras_require`,"
         "and/or `setup_requires` version numbers for PIP packages"

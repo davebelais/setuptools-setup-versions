@@ -19,9 +19,9 @@ def setup_script_path(
     """
     Find the setup script
     """
-    if package_directory_or_setup_script is None:
+    if package_directory_or_setup_script in ("setup.py", None):
         setup_script_path = "./setup.py"
-    elif package_directory_or_setup_script[-9:] == "/setup.py":
+    elif package_directory_or_setup_script.endswith("/setup.py"):
         # If we've been passed the setup.py file path, get the package
         # directory
         setup_script_path = package_directory_or_setup_script
