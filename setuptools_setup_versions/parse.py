@@ -33,10 +33,19 @@ from packaging.utils import canonicalize_name
 from . import find
 
 PACKAGE_VERSION_PATTERN: Pattern = re.compile(
-    r"^\s*([^\s~<>=]*)?\s*([~<>=].*?)?\s*$"
+    r"^\s*([^\s~<>=;]*)?\s*([~<>=][^;]*?)?\s*"
+    r"(?:;.*?)?"  # environment marker
+    r"\s*$"
 )
 PACKAGE_NAME_EXTRAS_VERSION_PATTERN: Pattern = re.compile(
-    r"^\s*" r"([^\s~<>=\[\]]*)?" r"(?:\[([^]]+)])?" r"\s*" r"([~<>=].*?)?\s*$"
+    r"^\s*"
+    r"([^\s~<>=\[\]]*)?"
+    r"(?:\[([^]]+)])?"
+    r"\s*"
+    r"([~<>=][^;]*?)?"
+    r"\s*"
+    r"(?:;.*?)?"  # environment marker
+    r"\s*$"
 )
 STRING_LITERAL_RE = (
     # Make sure the quote is not escaped
